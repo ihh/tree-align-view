@@ -3,18 +3,21 @@ const render = (opts) => {
   // opts.rowData is a map of seqname->row
   // All nodes MUST be uniquely named!
   const { root, branches, rowData } = opts
-  const hidden = opts.hidden || {}
+  const collapsed = opts.collapsed || {}
   const genericRowHeight = opts.rowHeight || 16
   const containerWidth = opts.width || 800
   let containerHeight = opts.height || null
   const treeWidth = opts.treeWidth || 200
-  const nodeHandleRadius = opts.nodeHandleRadius || 4
-  const nodeHandleFillStyle = opts.nodeHandleFillStyle || 'black'
   const branchStrokeStyle = opts.branchStrokeStyle || 'black'
+  const nodeHandleStrokeStyle = branchStrokeStyle
+  const nodeHandleRadius = opts.nodeHandleRadius || 4
+  const nodeHandleFillStyle = opts.nodeHandleFillStyle || 'white'
+  const collapsedNodeHandleFillStyle = opts.collapsedNodeHandleFillStyle || 'black'
   const rowConnectorDash = opts.rowConnectorDash || [2,2]
+  const handler = opts.handler || {}
   const lineWidth = 1
   const availableTreeWidth = treeWidth - nodeHandleRadius - 2*lineWidth
-  const scrollbarHeight = 20
+  const scrollbarHeight = 20  // hack
   let children = {}, branchLength = {}
   children[root] = []
   branchLength[root] = 0
@@ -25,7 +28,7 @@ const render = (opts) => {
     children[parent].push (child)
     branchLength[child] = len
   })
-  let nodes = [], nodeRank = {}, distFromRoot = {}, maxDistFromRoot = 0
+  let nodes = [], nodeRank = {}, ancestorCollapsed = {}, distFromRoot = {}, maxDistFromRoot = 0
   const addNode = (node) => {
     if (!node)
       throw new Error ("All nodes must be named")
@@ -37,6 +40,7 @@ const render = (opts) => {
   const addSubtree = (node, parent) => {
     distFromRoot[node] = (typeof(parent) !== 'undefined' ? distFromRoot[parent] : 0) + branchLength[node]
     maxDistFromRoot = Math.max (maxDistFromRoot, distFromRoot[node])
+    ancestorCollapsed[node] = ancestorCollapsed[parent] || collapsed[parent]
     const kids = children[node]
     if (kids.length == 2) {
       addSubtree (kids[0], node)
@@ -50,7 +54,7 @@ const render = (opts) => {
   addSubtree (root)
   let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
   nodes.forEach ((node) => {
-    const rh = (hidden[node] || !rowData[node]) ? 0 : genericRowHeight
+    const rh = (ancestorCollapsed[node] || !(rowData[node] || (collapsed[node] && !ancestorCollapsed[node]))) ? 0 : genericRowHeight
     nx[node] = nodeHandleRadius + lineWidth + availableTreeWidth * distFromRoot[node] / maxDistFromRoot
     ny[node] = treeHeight + rh / 2
     rowHeight[node] = rh
@@ -75,41 +79,72 @@ const render = (opts) => {
       namesDiv = create ('div', alignDiv, { 'font-size': genericRowHeight + 'px', 'margin-left': '2px', 'margin-right': '2px' }),
       rowsDiv = create ('div', alignDiv, { 'font-family': 'Courier,monospace', 'font-size': genericRowHeight + 'px', 'overflow-x': 'scroll', 'overflow-y': 'hidden' })
   let ctx = treeCanvas.getContext('2d')
-  ctx.fillStyle = nodeHandleFillStyle
   ctx.strokeStyle = branchStrokeStyle
   ctx.lineWidth = 1
+  const makeNodeHandlePath = (node) => {
+    ctx.beginPath()
+    ctx.arc (nx[node], ny[node], nodeHandleRadius, 0, 2*Math.PI)
+  }
+  let nodesWithHandles = nodes.filter ((node) => !ancestorCollapsed[node] && children[node].length)
   nodes.forEach ((node) => {
-    let style = null
-    if (rowData[node])
-      style = { height: genericRowHeight + 'px' }
+    let style = { height: rowHeight[node] + 'px' }
     let nameDiv = create ('div', namesDiv, style)
     let rowDiv = create ('div', rowsDiv, style)
-    if (rowData[node]) {
-      nameDiv.innerText = node
-      rowDiv.innerText = rowData[node]
-    }
-    if (children[node].length) {
-      ctx.setLineDash ([])
-      ctx.beginPath()
-      ctx.arc (nx[node], ny[node], nodeHandleRadius, 0, 2*Math.PI)
-      ctx.fill()
-      children[node].forEach ((child) => {
+    if (!ancestorCollapsed[node]) {
+      if (rowHeight[node])
+        nameDiv.innerText = node
+      if (rowData[node])
+        rowDiv.innerText = rowData[node]
+      if (!children[node].length) {
+        ctx.setLineDash ([])
+        ctx.beginPath()
+        ctx.fillRect (nx[node], ny[node] - nodeHandleRadius, 1, 2*nodeHandleRadius)
+      }
+      if (children[node].length && !collapsed[node]) {
+          ctx.setLineDash ([])
+          children[node].forEach ((child) => {
+            ctx.beginPath()
+            ctx.moveTo (nx[node], ny[node])
+            ctx.lineTo (nx[node], ny[child])
+            ctx.lineTo (nx[child], ny[child])
+            ctx.stroke()
+          })
+      } else {
+        ctx.setLineDash (rowConnectorDash)
         ctx.beginPath()
         ctx.moveTo (nx[node], ny[node])
-        ctx.lineTo (nx[node], ny[child])
-        ctx.lineTo (nx[child], ny[child])
+        ctx.lineTo (treeWidth, ny[node])
         ctx.stroke()
-      })
-    } else {
-      ctx.setLineDash ([])
-      ctx.beginPath()
-      ctx.fillRect (nx[node], ny[node] - nodeHandleRadius, 1, 2*nodeHandleRadius)
-      ctx.setLineDash (rowConnectorDash)
-      ctx.beginPath()
-      ctx.moveTo (nx[node], ny[node])
-      ctx.lineTo (treeWidth, ny[node])
+      }
+    }
+  })
+  ctx.strokeStyle = branchStrokeStyle
+  ctx.setLineDash ([])
+  nodesWithHandles.forEach ((node) => {
+    makeNodeHandlePath (node)
+    if (collapsed[node])
+      ctx.fillStyle = collapsedNodeHandleFillStyle
+    else {
+      ctx.fillStyle = nodeHandleFillStyle
       ctx.stroke()
     }
+    ctx.fill()
+  })
+  const canvasRect = treeCanvas.getBoundingClientRect(),
+        canvasOffset = { top: canvasRect.top + document.body.scrollTop,
+                         left: canvasRect.left + document.body.scrollLeft }
+  treeCanvas.addEventListener ('click', (evt) => {
+    evt.preventDefault()
+    const mouseX = parseInt (evt.clientX - canvasOffset.left)
+    const mouseY = parseInt (evt.clientY - canvasOffset.top)
+    let clickedNode = null
+    nodesWithHandles.forEach ((node) => {
+      makeNodeHandlePath (node)
+      if (ctx.isPointInPath (mouseX, mouseY))
+        clickedNode = node
+    })
+    if (clickedNode && handler.nodeClicked)
+      handler.nodeClicked (clickedNode)
   })
   return { element: container }
 }
