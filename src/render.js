@@ -5,6 +5,8 @@ const render = (opts) => {
   const { root, branches, rowData } = opts
   const hidden = opts.hidden || {}
   const genericRowHeight = opts.rowHeight || 16
+  const containerWidth = opts.width || 800
+  let containerHeight = opts.height || null
   const treeWidth = opts.treeWidth || 200
   const nodeHandleRadius = opts.nodeHandleRadius || 4
   const nodeHandleFillStyle = opts.nodeHandleFillStyle || 'black'
@@ -12,6 +14,7 @@ const render = (opts) => {
   const rowConnectorDash = opts.rowConnectorDash || [2,2]
   const lineWidth = 1
   const availableTreeWidth = treeWidth - nodeHandleRadius - 2*lineWidth
+  const scrollbarHeight = 20
   let children = {}, branchLength = {}
   children[root] = []
   branchLength[root] = 0
@@ -53,7 +56,9 @@ const render = (opts) => {
     rowHeight[node] = rh
     treeHeight += rh
   })
-  const create = (type, parent, attrs, styles) => {
+  treeHeight += scrollbarHeight
+  containerHeight = containerHeight || treeHeight
+  const create = (type, parent, styles, attrs) => {
     const element = document.createElement (type)
     if (parent)
       parent.appendChild (element)
@@ -63,18 +68,22 @@ const render = (opts) => {
       element.setAttribute ('style', Object.keys(styles).reduce ((styleAttr, style) => styleAttr + style + ':' + styles[style] + ';', ''))
     return element
   }
-  let container = create ('div', opts.parent, null, { display: 'flex', 'flex-direction': 'row' }),
-      treeCanvas = create ('canvas', container, { width: treeWidth, height: treeHeight }),
-      alignDiv = create ('div', container, null, { display: 'flex', 'flex-direction': 'row' }),
-      namesDiv = create ('div', alignDiv, null, { 'font-size': genericRowHeight + 'px', 'margin-left': '2px', 'margin-right': '2px' }),
-      rowsDiv = create ('div', alignDiv, null, { 'font-family': 'Courier,monospace', 'font-size': genericRowHeight + 'px' })
+  let container = create ('div', opts.parent, { display: 'flex', 'flex-direction': 'row', width: containerWidth + 'px', height: containerHeight + 'px', 'overflow-y': 'auto' }),
+      treeDiv = create ('div', container, { width: treeWidth + 'px', height: treeHeight + 'px' }),
+      treeCanvas = create ('canvas', treeDiv, null, { width: treeWidth, height: treeHeight }),
+      alignDiv = create ('div', container, { display: 'flex', 'flex-direction': 'row', overflow: 'hidden', height: treeHeight + 'px' }),
+      namesDiv = create ('div', alignDiv, { 'font-size': genericRowHeight + 'px', 'margin-left': '2px', 'margin-right': '2px' }),
+      rowsDiv = create ('div', alignDiv, { 'font-family': 'Courier,monospace', 'font-size': genericRowHeight + 'px', 'overflow-x': 'scroll', 'overflow-y': 'hidden' })
   let ctx = treeCanvas.getContext('2d')
   ctx.fillStyle = nodeHandleFillStyle
   ctx.strokeStyle = branchStrokeStyle
   ctx.lineWidth = 1
   nodes.forEach ((node) => {
-    let nameDiv = create ('div', namesDiv)
-    let rowDiv = create ('div', rowsDiv)
+    let style = null
+    if (rowData[node])
+      style = { height: genericRowHeight + 'px' }
+    let nameDiv = create ('div', namesDiv, style)
+    let rowDiv = create ('div', rowsDiv, style)
     if (rowData[node]) {
       nameDiv.innerText = node
       rowDiv.innerText = rowData[node]
