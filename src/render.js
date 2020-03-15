@@ -102,7 +102,7 @@ const render = (opts) => {
       ctx.stroke()
     }
   })
-  return container
+  return { element: container }
 }
 
 if (typeof(module) !== 'undefined')
