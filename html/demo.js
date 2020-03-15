@@ -14,8 +14,5 @@ let opts = { root: 'root',
              handler: { nodeClicked: (node) => { collapsed[node] = !collapsed[node]; redraw() } },
              rowHeight: 24,
              parent: mainDiv }
-const redraw = () => {
-  mainDiv.innerHTML = ''
-  render (opts)
-}
+const redraw = () => render (opts);
 redraw()

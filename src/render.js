@@ -1,4 +1,4 @@
-const render = (opts) => {
+const render = (() => { return (opts) => {
   // opts.branches is a list of [parent,child,length]
   // opts.rowData is a map of seqname->row
   // All nodes MUST be uniquely named!
@@ -72,6 +72,8 @@ const render = (opts) => {
       element.setAttribute ('style', Object.keys(styles).reduce ((styleAttr, style) => styleAttr + style + ':' + styles[style] + ';', ''))
     return element
   }
+  if (opts.parent)
+    opts.parent.innerHTML = ''
   let container = create ('div', opts.parent, { display: 'flex', 'flex-direction': 'row', width: containerWidth + 'px', height: containerHeight + 'px', 'overflow-y': 'auto' }),
       treeDiv = create ('div', container, { width: treeWidth + 'px', height: treeHeight + 'px' }),
       treeCanvas = create ('canvas', treeDiv, null, { width: treeWidth, height: treeHeight }),
@@ -148,6 +150,8 @@ const render = (opts) => {
   })
   return { element: container }
 }
+
+                      })()
 
 if (typeof(module) !== 'undefined')
   module.exports = render
