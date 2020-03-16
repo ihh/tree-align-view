@@ -42,20 +42,21 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const color = opts.color || colorScheme[opts.colorScheme || defaultColorScheme]
     let scrollTop = opts.scrollTop
     
-    const lineWidth = 1
-    const availableTreeWidth = treeWidth - nodeHandleRadius - 2*lineWidth
+    const treeStrokeWidth = 1
+    const availableTreeWidth = treeWidth - nodeHandleRadius - 2*treeStrokeWidth
+    const charFontName = 'Menlo,monospace'
     const scrollbarHeight = 20  // hack
 
     // pre-render alphabet
     let charImage = {}
-    const charFont = genericRowHeight + 'px Menlo,monospace'
+    const charFont = genericRowHeight + 'px ' + charFontName
     const charMetrics = (() => {
       let measureCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
       let measureContext = measureCanvas.getContext('2d')
       measureContext.font = charFont
       return measureContext.measureText ('X')
     })()
-    const charWidth = charMetrics.width, charHeight = charMetrics.height
+    const charWidth = charMetrics.width, charHeight = genericRowHeight
     Object.keys(rowData).forEach ((name) => rowData[name].split('').forEach ((c) => {
       if (!charImage[c]) {
         let charCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
@@ -107,7 +108,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
     nodes.forEach ((node) => {
       const rh = (ancestorCollapsed[node] || !(rowData[node] || (collapsed[node] && !ancestorCollapsed[node]))) ? 0 : genericRowHeight
-      nx[node] = nodeHandleRadius + lineWidth + availableTreeWidth * distFromRoot[node] / maxDistFromRoot
+      nx[node] = nodeHandleRadius + treeStrokeWidth + availableTreeWidth * distFromRoot[node] / maxDistFromRoot
       ny[node] = treeHeight + rh / 2
       rowHeight[node] = rh
       treeHeight += rh
@@ -137,14 +138,14 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
                                               'max-width': nameWidth + 'px',
                                               'flex-shrink': 0,
                                               'white-space': 'nowrap' }),
-        rowsDiv = create ('div', alignDiv, { 'font-family': 'Menlo,monospace',
+        rowsDiv = create ('div', alignDiv, { 'font-family': charFontName,
                                              'font-size': genericRowHeight + 'px',
                                              'overflow-x': 'scroll',
                                              'overflow-y': 'hidden',
                                              cursor: 'move' })
     let ctx = treeCanvas.getContext('2d')
     ctx.strokeStyle = branchStrokeStyle
-    ctx.lineWidth = 1
+    ctx.lineWidth = treeStrokeWidth
     const makeNodeHandlePath = (node) => {
       ctx.beginPath()
       ctx.arc (nx[node], ny[node], nodeHandleRadius, 0, 2*Math.PI)
