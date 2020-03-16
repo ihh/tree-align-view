@@ -1,7 +1,6 @@
 let mainDiv = document.getElementById ('main')
-let collapsed = {}
 let opts = {
-  root: 'node25',
+  root: 'root',
   branches: [
     [ 'node1', 'Q112T8_TRIEI/59-200', 0.46854 ],
     [ 'node1', 'B7KLQ4_CYAP7/136-277', 0.22403 ],
@@ -69,7 +68,8 @@ let opts = {
     [ 'node24', 'D2QCC4_SPILD/162-305', 0.84247 ],
     [ 'node26', 'node24', 0.39858 ],
     [ 'node26', 'node22', 0.29225 ],
-    [ 'node25', 'node26', 0.02808 ],
+    [ 'root', 'node26', 0.02808 ],
+    [ 'root', 'node25', 0 ],
     [ 'node25', 'node30', 0.10532 ],
     [ 'node25', 'node14', 0.17052 ] ],
   rowData: {
@@ -110,10 +110,16 @@ let opts = {
     'D3T269_NATMM/179-319': 'TVVCIDQ.TKKSVQV.EPRAAWFPRGTR..PS.VELSGQRD....WTCLLGAITENG...DRFF.TRFEEYVTAAHAKH.FILALCQEFED.................NLIVVLDGAP..YFQASAVTDLAAR...............................DDLTFVRL.....PAYSPELNPVEECWRQLQAALSN..RFFDSLPELT',
     'Q5V1W0_HALMA/25-182': 'TVVVVDQ.FTKHVGT.VQRRGFYPIGSN..PT.IEVATSWD....SVTVLGAVTDNG...DSFF.CWTEENLTRNHGIR.LLEALKDRFGE.................ELVVFLDRAG..YFYARDLWEHVSGERETETVG..............DSSVSCVRGDDLEVWYF.....PSKLPELNAVEGCWDQLQEWFKY..RLVPDISSLK'
   },
-  collapsed,
-  handler: { nodeClicked: (node) => { collapsed[node] = !collapsed[node]; redraw() } },
+  height: '400px',  /* to test vertical scrolling */
+  collapsed: {},
+  handler: { nodeClicked: (node) => {
+    opts.collapsed[node] = !opts.collapsed[node];
+    opts.scrollTop = info.element.scrollTop;
+    redraw()
+  } },
   parent: mainDiv }
-const redraw = () => render (opts);
+let info
+const redraw = () => { info = render (opts) }
 redraw()
 
 

@@ -4,7 +4,7 @@ const { render } = (() => {
     clustal: { G: "orange", P: "orange", S: "orange", T: "orange", H: "red", K: "red", R: "red", F: "blue", W: "blue", Y: "blue", I: "green", L: "green", M: "green", V: "green" },
 lesk: { G: "orange", A: "orange", S: "orange", T: "orange", C: "green", V: "green", I: "green", L: "green", P: "green", F: "green", Y: "green", M: "green", W: "green", N: "magenta", Q: "magenta", H: "magenta", D: "red", E: "red", K: "blue", R: "blue" },
 maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "darkgreen", N: "darkgreen", Q: "darkgreen", I: "blue", L: "blue", M: "blue", V: "blue", F: "lilac", W: "lilac", Y: "lilac", H: "darkblue", K: "orange", R: "orange", P: "pink", S: "red", T: "red" },
-    cinema: { H: "blue", K: "blue", R: "blue", D: "red", E: "red", S: "green", T: "green", N: "green", Q: "green", A: "white", V: "white", L: "white", I: "white", M: "white", F: "magenta", W: "magenta", Y: "magenta", P: "brown", G: "brown", C: "yellow", B: "gray", Z: "gray", X: "gray", "-": "gray" }
+    cinema: { H: "blue", K: "blue", R: "blue", D: "red", E: "red", S: "green", T: "green", N: "green", Q: "green", A: "white", V: "white", L: "white", I: "white", M: "white", F: "magenta", W: "magenta", Y: "magenta", P: "brown", G: "brown", C: "yellow", B: "gray", Z: "gray", X: "gray", "-": "gray", ".": "gray" }
   }
 
   const defaultColorScheme = "maeditor"
@@ -29,7 +29,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const rowConnectorDash = opts.rowConnectorDash || [2,2]
     const handler = opts.handler || {}
     const color = opts.color || colorScheme[opts.colorScheme || defaultColorScheme]
-
+    let scrollTop = opts.scrollTop
+    
     const lineWidth = 1
     const availableTreeWidth = treeWidth - nodeHandleRadius - 2*lineWidth
     const scrollbarHeight = 20  // hack
@@ -76,22 +77,22 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       treeHeight += rh
     })
     treeHeight += scrollbarHeight
-    containerHeight = containerHeight || treeHeight
+    containerHeight = containerHeight || (treeHeight + 'px')
     const create = (type, parent, styles, attrs) => {
       const element = document.createElement (type)
       if (parent)
         parent.appendChild (element)
       if (attrs)
-        Object.keys(attrs).forEach ((attr) => element.setAttribute (attr, attrs[attr]))
+        Object.keys(attrs).filter ((attr) => attrs[attr]).forEach ((attr) => element.setAttribute (attr, attrs[attr]))
       if (styles)
-        element.setAttribute ('style', Object.keys(styles).reduce ((styleAttr, style) => styleAttr + style + ':' + styles[style] + ';', ''))
+        element.setAttribute ('style', Object.keys(styles).filter ((style) => styles[style] !== '').reduce ((styleAttr, style) => styleAttr + style + ':' + styles[style] + ';', ''))
       return element
     }
     if (opts.parent)
       opts.parent.innerHTML = ''
     let container = create ('div', opts.parent, { display: 'flex', 'flex-direction': 'row',
-                                                  width: containerWidth + 'px',
-                                                  height: containerHeight + 'px',
+                                                  width: containerWidth,
+                                                  height: containerHeight,
                                                   'overflow-y': 'auto' }),
         treeDiv = create ('div', container, { width: treeWidth + 'px',
                                               height: treeHeight + 'px' }),
@@ -112,7 +113,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
         rowsDiv = create ('div', alignDiv, { 'font-family': 'Menlo,monospace',
                                              'font-size': genericRowHeight + 'px',
                                              'overflow-x': 'scroll',
-                                             'overflow-y': 'hidden' })
+                                             'overflow-y': 'hidden',
+                                             cursor: 'move' })
     let ctx = treeCanvas.getContext('2d')
     ctx.strokeStyle = branchStrokeStyle
     ctx.lineWidth = 1
@@ -174,10 +176,11 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const canvasRect = treeCanvas.getBoundingClientRect(),
           canvasOffset = { top: canvasRect.top + document.body.scrollTop,
                            left: canvasRect.left + document.body.scrollLeft }
+
     treeCanvas.addEventListener ('click', (evt) => {
       evt.preventDefault()
       const mouseX = parseInt (evt.clientX - canvasOffset.left)
-      const mouseY = parseInt (evt.clientY - canvasOffset.top)
+      const mouseY = parseInt (evt.clientY - canvasOffset.top + container.scrollTop)
       let clickedNode = null
       nodesWithHandles.forEach ((node) => {
         makeNodeHandlePath (node)
@@ -187,6 +190,55 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       if (clickedNode && handler.nodeClicked)
         handler.nodeClicked (clickedNode)
     })
+
+    let startX, scrollLeft, rowsDivMouseDown;
+    rowsDiv.addEventListener("mousedown", e => {
+      rowsDivMouseDown = true;
+      rowsDiv.classList.add("active");
+      startX = e.pageX - rowsDiv.offsetLeft;
+      scrollLeft = rowsDiv.scrollLeft;
+    });
+    rowsDiv.addEventListener("mouseleave", () => {
+      rowsDivMouseDown = false;
+      rowsDiv.classList.remove("active");
+    });
+    rowsDiv.addEventListener("mouseup", () => {
+      rowsDivMouseDown = false;
+      rowsDiv.classList.remove("active");
+    });
+    rowsDiv.addEventListener("mousemove", e => {
+      if (!rowsDivMouseDown) return;
+      e.preventDefault();
+      const x = e.pageX - rowsDiv.offsetLeft;
+      const walk = x - startX;
+      rowsDiv.scrollLeft = scrollLeft - walk;
+    });
+
+    let startY, containerMouseDown;
+    if (typeof(scrollTop) !== 'undefined')
+      container.scrollTop = scrollTop
+    container.addEventListener("mousedown", e => {
+      containerMouseDown = true;
+      container.classList.add("active");
+      startY = e.pageY - container.offsetTop;
+      scrollTop = container.scrollTop;
+    });
+    container.addEventListener("mouseleave", () => {
+      containerMouseDown = false;
+      container.classList.remove("active");
+    });
+    container.addEventListener("mouseup", () => {
+      containerMouseDown = false;
+      container.classList.remove("active");
+    });
+    container.addEventListener("mousemove", e => {
+      if (!containerMouseDown) return;
+      e.preventDefault();
+      const y = e.pageY - container.offsetTop;
+      const walk = y - startY;
+      container.scrollTop = scrollTop - walk;
+    });
+    
     return { element: container }
   }
 
