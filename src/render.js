@@ -15,10 +15,12 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     // All nodes MUST be uniquely named!
     const { root, branches, rowData } = opts
     const collapsed = opts.collapsed || {}
-    const genericRowHeight = opts.rowHeight || 16
-    const containerWidth = opts.width || 800
+    const genericRowHeight = opts.rowHeight || 24
+    const nameFontSize = opts.nameFontSize || 12
+    const containerWidth = opts.width || ''
     let containerHeight = opts.height || null
     const treeWidth = opts.treeWidth || 200
+    const nameWidth = opts.nameWidth || 200
     const branchStrokeStyle = opts.branchStrokeStyle || 'black'
     const nodeHandleStrokeStyle = branchStrokeStyle
     const nodeHandleRadius = opts.nodeHandleRadius || 4
@@ -87,12 +89,30 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     }
     if (opts.parent)
       opts.parent.innerHTML = ''
-    let container = create ('div', opts.parent, { display: 'flex', 'flex-direction': 'row', width: containerWidth + 'px', height: containerHeight + 'px', 'overflow-y': 'auto' }),
-        treeDiv = create ('div', container, { width: treeWidth + 'px', height: treeHeight + 'px' }),
-        treeCanvas = create ('canvas', treeDiv, null, { width: treeWidth, height: treeHeight }),
-        alignDiv = create ('div', container, { display: 'flex', 'flex-direction': 'row', overflow: 'hidden', height: treeHeight + 'px' }),
-        namesDiv = create ('div', alignDiv, { 'font-size': genericRowHeight + 'px', 'margin-left': '2px', 'margin-right': '2px' }),
-        rowsDiv = create ('div', alignDiv, { 'font-family': 'Courier,monospace', 'font-size': genericRowHeight + 'px', 'overflow-x': 'scroll', 'overflow-y': 'hidden' })
+    let container = create ('div', opts.parent, { display: 'flex', 'flex-direction': 'row',
+                                                  width: containerWidth + 'px',
+                                                  height: containerHeight + 'px',
+                                                  'overflow-y': 'auto' }),
+        treeDiv = create ('div', container, { width: treeWidth + 'px',
+                                              height: treeHeight + 'px' }),
+        treeCanvas = create ('canvas', treeDiv, null, { width: treeWidth,
+                                                        height: treeHeight }),
+        alignDiv = create ('div', container, { display: 'flex',
+                                               'flex-direction': 'row',
+                                               overflow: 'hidden',
+                                               height: treeHeight + 'px' }),
+        namesDiv = create ('div', alignDiv, { 'font-size': nameFontSize + 'px',
+                                              'margin-left': '2px',
+                                              'margin-right': '2px',
+                                              'overflow-x': 'auto',
+                                              'overflow-y': 'hidden',
+                                              'max-width': nameWidth + 'px',
+                                              'flex-shrink': 0,
+                                              'white-space': 'nowrap' }),
+        rowsDiv = create ('div', alignDiv, { 'font-family': 'Menlo,monospace',
+                                             'font-size': genericRowHeight + 'px',
+                                             'overflow-x': 'scroll',
+                                             'overflow-y': 'hidden' })
     let ctx = treeCanvas.getContext('2d')
     ctx.strokeStyle = branchStrokeStyle
     ctx.lineWidth = 1
@@ -102,13 +122,16 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     }
     let nodesWithHandles = nodes.filter ((node) => !ancestorCollapsed[node] && children[node].length)
     nodes.forEach ((node) => {
-      let style = { height: rowHeight[node] + 'px' }
-      let nameDiv = create ('div', namesDiv, style)
-      let rowDiv = create ('div', rowsDiv, style)
+      let nameDiv = create ('div', namesDiv, { height: rowHeight[node] + 'px',
+                                               display: 'flex',
+                                               'flex-direction': 'column',
+                                               'justify-content': 'center' })
+      let rowDiv = create ('div', rowsDiv, { height: rowHeight[node] + 'px' })
       if (!ancestorCollapsed[node]) {
-        if (rowHeight[node])
-          nameDiv.innerText = node
-        if (rowData[node])
+        if (rowHeight[node]) {
+          let nameSpan = create ('span', nameDiv)
+          nameSpan.innerText = node
+        } if (rowData[node])
           rowData[node].split('').forEach ((c) => {
             let span = create ('span', rowDiv, { color: color[c.toUpperCase()] || color['default'] || 'black' })
             span.innerText = c
