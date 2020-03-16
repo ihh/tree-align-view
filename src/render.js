@@ -8,12 +8,23 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
   }
 
   const defaultColorScheme = "maeditor"
+
+  const create = (type, parent, styles, attrs) => {
+    const element = document.createElement (type)
+    if (parent)
+      parent.appendChild (element)
+    if (attrs)
+      Object.keys(attrs).filter ((attr) => attrs[attr]).forEach ((attr) => element.setAttribute (attr, attrs[attr]))
+    if (styles)
+      element.setAttribute ('style', Object.keys(styles).filter ((style) => styles[style] !== '').reduce ((styleAttr, style) => styleAttr + style + ':' + styles[style] + ';', ''))
+    return element
+  }
   
   const render = (opts) => {
     // opts.branches is a list of [parent,child,length]
     // opts.rowData is a map of seqname->row
     // All nodes MUST be uniquely named!
-    const { root, branches, rowData } = opts
+    const { root, branches, rowData } = opts  // mandatory arguments
     const collapsed = opts.collapsed || {}
     const genericRowHeight = opts.rowHeight || 24
     const nameFontSize = opts.nameFontSize || 12
@@ -34,6 +45,29 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const lineWidth = 1
     const availableTreeWidth = treeWidth - nodeHandleRadius - 2*lineWidth
     const scrollbarHeight = 20  // hack
+
+    // pre-render alphabet
+    let charImage = {}
+    const charFont = genericRowHeight + 'px Menlo,monospace'
+    const charMetrics = (() => {
+      let measureCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
+      let measureContext = measureCanvas.getContext('2d')
+      measureContext.font = charFont
+      return measureContext.measureText ('X')
+    })()
+    const charWidth = charMetrics.width, charHeight = charMetrics.height
+    Object.keys(rowData).forEach ((name) => rowData[name].split('').forEach ((c) => {
+      if (!charImage[c]) {
+        let charCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
+        let charContext = charCanvas.getContext('2d')
+        charContext.fillStyle = color[c.toUpperCase()] || color['default'] || 'black'
+        charContext.font = charFont
+        charContext.fillText (c, 0, genericRowHeight)
+        charImage[c] = charCanvas.toDataURL()
+      }
+    }))
+    
+    // get tree structure
     let children = {}, branchLength = {}
     children[root] = []
     branchLength[root] = 0
@@ -68,6 +102,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       }
     }
     addSubtree (root)
+
+    // layout tree
     let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
     nodes.forEach ((node) => {
       const rh = (ancestorCollapsed[node] || !(rowData[node] || (collapsed[node] && !ancestorCollapsed[node]))) ? 0 : genericRowHeight
@@ -78,16 +114,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     })
     treeHeight += scrollbarHeight
     containerHeight = containerHeight || (treeHeight + 'px')
-    const create = (type, parent, styles, attrs) => {
-      const element = document.createElement (type)
-      if (parent)
-        parent.appendChild (element)
-      if (attrs)
-        Object.keys(attrs).filter ((attr) => attrs[attr]).forEach ((attr) => element.setAttribute (attr, attrs[attr]))
-      if (styles)
-        element.setAttribute ('style', Object.keys(styles).filter ((style) => styles[style] !== '').reduce ((styleAttr, style) => styleAttr + style + ':' + styles[style] + ';', ''))
-      return element
-    }
+
     if (opts.parent)
       opts.parent.innerHTML = ''
     let container = create ('div', opts.parent, { display: 'flex', 'flex-direction': 'row',
@@ -128,16 +155,25 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
                                                display: 'flex',
                                                'flex-direction': 'column',
                                                'justify-content': 'center' })
-      let rowDiv = create ('div', rowsDiv, { height: rowHeight[node] + 'px' })
+      let rowDiv = create ('div', rowsDiv, { height: rowHeight[node] + 'px',
+                                             display: 'flex' })
       if (!ancestorCollapsed[node]) {
-        if (rowHeight[node]) {
+        const rh = rowHeight[node]
+        if (rh) {
           let nameSpan = create ('span', nameDiv)
           nameSpan.innerText = node
-        } if (rowData[node])
+        } if (rowData[node]) {
+          const useImages = false
           rowData[node].split('').forEach ((c) => {
-            let span = create ('span', rowDiv, { color: color[c.toUpperCase()] || color['default'] || 'black' })
-            span.innerText = c
+            let span = create ('span', rowDiv, { color: color[c.toUpperCase()] || color['default'] || 'black',
+                                                 width: charWidth,
+                                                 height: charHeight })
+            if (useImages)
+              create ('img', span, { width: rh, height: rh }, { src: charImage[c] })
+            else
+              span.innerText = c
           })
+        }
         if (!children[node].length) {
           ctx.setLineDash ([])
           ctx.beginPath()
