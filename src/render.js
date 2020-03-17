@@ -78,7 +78,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     return { nx, ny, rowHeight, containerHeight, treeHeight }
   }
 
-
   // get metrics and other info about alignment font/chars
   const getAlignCharMetrics = (opts) => {
     const { treeSummary, rowData, genericRowHeight, charFont } = opts
@@ -96,6 +95,101 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     })
     const charHeight = genericRowHeight
     return { alignChars, charDescent, charWidth, charHeight }
+  }
+
+  // render alignment
+  const buildNodeImageCache = (opts) => {
+    const { treeSummary, rowData, maxNameImageWidth, genericRowHeight, nameFont, nameFontColor, nameFontSize, charFont, color, alignCharMetrics } = opts
+    let { nodeImageCache, rowWidth } = opts
+    nodeImageCache = nodeImageCache || {}
+    rowWidth = rowWidth || 0
+    treeSummary.nodes.forEach ((node) => {
+      let imageCache = nodeImageCache[node] || {}
+      if (!imageCache.name) {
+        let measureCanvas = create ('canvas', null, null, { width: maxNameImageWidth, height: genericRowHeight })
+        let measureContext = measureCanvas.getContext('2d')
+        measureContext.font = nameFont
+        const nameMetrics = measureContext.measureText (node)
+        imageCache.nameWidth = nameMetrics.width
+        let nameCanvas = create ('canvas', null, null, { width: imageCache.nameWidth,
+                                                         height: genericRowHeight })
+        let nameContext = nameCanvas.getContext('2d')
+        nameContext.font = nameFont
+        nameContext.fillStyle = nameFontColor
+        nameContext.fillText (node, 0, (genericRowHeight + nameFontSize) / 2 - 1)
+        imageCache.name = nameCanvas.toDataURL()
+      }
+
+      if (rowData[node] && !imageCache.row) {
+        rowWidth = Math.max (rowWidth, rowData[node].length * alignCharMetrics.charWidth)
+        let rowCanvas = create ('canvas', null, null, { width: rowWidth,
+                                                        height: genericRowHeight })
+        let rowContext = rowCanvas.getContext('2d')
+        rowContext.font = charFont
+        rowData[node].split('').forEach ((c, pos) => {
+          rowContext.fillStyle = color[c.toUpperCase()] || color['default'] || 'black'
+          rowContext.fillText (c, pos * alignCharMetrics.charWidth, genericRowHeight - alignCharMetrics.charDescent)
+        })
+        imageCache.row = rowCanvas.toDataURL()
+      }
+      nodeImageCache[node] = imageCache
+    })
+    return { nodeImageCache, rowWidth }
+  }
+
+  // render tree
+  const renderTree = (opts) => {
+    const { treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle } = opts
+    let { treeDiv } = opts
+    const { nx, ny, treeHeight } = treeLayout
+    let treeCanvas = create ('canvas', treeDiv, null, { width: treeWidth,
+                                                        height: treeHeight }),
+        ctx = treeCanvas.getContext('2d')
+    ctx.strokeStyle = branchStrokeStyle
+    ctx.lineWidth = treeStrokeWidth
+    const makeNodeHandlePath = (node) => {
+      ctx.beginPath()
+      ctx.arc (nx[node], ny[node], nodeHandleRadius, 0, 2*Math.PI)
+    }
+    let nodesWithHandles = treeSummary.nodes.filter ((node) => !ancestorCollapsed[node] && treeSummary.children[node].length)
+    treeSummary.nodes.forEach ((node) => {
+      if (!ancestorCollapsed[node]) {
+        if (!treeSummary.children[node].length) {
+          ctx.setLineDash ([])
+          ctx.beginPath()
+          ctx.fillRect (nx[node], ny[node] - nodeHandleRadius, 1, 2*nodeHandleRadius)
+        }
+        if (treeSummary.children[node].length && !collapsed[node]) {
+          ctx.setLineDash ([])
+          treeSummary.children[node].forEach ((child) => {
+            ctx.beginPath()
+            ctx.moveTo (nx[node], ny[node])
+            ctx.lineTo (nx[node], ny[child])
+            ctx.lineTo (nx[child], ny[child])
+            ctx.stroke()
+          })
+        } else {
+          ctx.setLineDash (rowConnectorDash)
+          ctx.beginPath()
+          ctx.moveTo (nx[node], ny[node])
+          ctx.lineTo (treeWidth, ny[node])
+          ctx.stroke()
+        }
+      }
+    })
+    ctx.strokeStyle = branchStrokeStyle
+    ctx.setLineDash ([])
+    nodesWithHandles.forEach ((node) => {
+      makeNodeHandlePath (node)
+      if (collapsed[node])
+        ctx.fillStyle = collapsedNodeHandleFillStyle
+      else {
+        ctx.fillStyle = nodeHandleFillStyle
+        ctx.stroke()
+      }
+      ctx.fill()
+    })
+    return { treeCanvas, nodesWithHandles, makeNodeHandlePath }
   }
   
   // create DOM element
@@ -130,8 +224,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const handler = opts.handler || {}
     const color = opts.color || colorScheme[opts.colorScheme || defaultColorScheme]
     let scrollTop = opts.scrollTop
-    let rowWidth = opts.rowWidth || 0
-    let nodeImageCache = opts.nodeImageCache || {}
 
     const treeStrokeWidth = 1
     const availableTreeWidth = treeWidth - nodeHandleRadius - 2*treeStrokeWidth
@@ -148,44 +240,19 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const treeSummary = opts.treeSummary = opts.treeSummary || summarizeTree ({ root, branches, collapsed })
     const { children, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot } = treeSummary
     const ancestorCollapsed = getAncestorCollapsed ({ treeSummary, collapsed })
-    const { nx, ny, rowHeight, treeHeight, containerHeight } = layoutTree ({ collapsed, ancestorCollapsed, rowData, genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight, treeSummary, containerHeight: opts.height || null })
+    const treeLayout = layoutTree ({ collapsed, ancestorCollapsed, rowData, genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight, treeSummary, containerHeight: opts.height || null })
+    const { nx, ny, rowHeight, treeHeight, containerHeight } = treeLayout
 
     // calculate font metrics
     const alignCharMetrics = opts.alignCharMetrics = opts.alignCharMetrics || getAlignCharMetrics ({ treeSummary, rowData, genericRowHeight, charFont })
     const { alignChars, charDescent, charWidth, charHeight } = alignCharMetrics
     
     // render the alignment names and rows as base64-encoded images
-    nodes.forEach ((node) => {
-      let imageCache = nodeImageCache[node] || {}
-      if (!imageCache.name) {
-        let measureCanvas = create ('canvas', null, null, { width: maxNameImageWidth, height: genericRowHeight })
-        let measureContext = measureCanvas.getContext('2d')
-        measureContext.font = nameFont
-        const nameMetrics = measureContext.measureText (node)
-        imageCache.nameWidth = nameMetrics.width
-        let nameCanvas = create ('canvas', null, null, { width: imageCache.nameWidth,
-                                                         height: genericRowHeight })
-        let nameContext = nameCanvas.getContext('2d')
-        nameContext.font = nameFont
-        nameContext.fillStyle = nameFontColor
-        nameContext.fillText (node, 0, (genericRowHeight + nameFontSize) / 2 - 1)
-        imageCache.name = nameCanvas.toDataURL()
-      }
-
-      if (rowData[node] && !imageCache.row) {
-        rowWidth = Math.max (rowWidth, rowData[node].length * charWidth)
-        let rowCanvas = create ('canvas', null, null, { width: rowWidth,
-                                                        height: genericRowHeight })
-        let rowContext = rowCanvas.getContext('2d')
-        rowContext.font = charFont
-        rowData[node].split('').forEach ((c, pos) => {
-          rowContext.fillStyle = color[c.toUpperCase()] || color['default'] || 'black'
-          rowContext.fillText (c, pos * charWidth, genericRowHeight - charDescent)
-        })
-        imageCache.row = rowCanvas.toDataURL()
-      }
-      nodeImageCache[node] = imageCache
-    })
+    const { nodeImageCache, rowWidth } = buildNodeImageCache ({ treeSummary, rowData, maxNameImageWidth, genericRowHeight, nameFont, nameFontColor, nameFontSize, charFont, color, alignCharMetrics,
+                                                                nodeImageCache: opts.nodeImageCache,
+                                                                rowWidth: opts.rowWidth })
+    opts.nodeImageCache = nodeImageCache
+    opts.rowWidth = rowWidth
 
     // create the alignment DIVs
     if (opts.parent)
@@ -241,53 +308,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     })
 
     // render the tree
-    let treeCanvas = create ('canvas', treeDiv, null, { width: treeWidth,
-                                                        height: treeHeight }),
-        ctx = treeCanvas.getContext('2d')
-    ctx.strokeStyle = branchStrokeStyle
-    ctx.lineWidth = treeStrokeWidth
-    const makeNodeHandlePath = (node) => {
-      ctx.beginPath()
-      ctx.arc (nx[node], ny[node], nodeHandleRadius, 0, 2*Math.PI)
-    }
-    let nodesWithHandles = nodes.filter ((node) => !ancestorCollapsed[node] && children[node].length)
-    nodes.forEach ((node) => {
-      if (!ancestorCollapsed[node]) {
-        if (!children[node].length) {
-          ctx.setLineDash ([])
-          ctx.beginPath()
-          ctx.fillRect (nx[node], ny[node] - nodeHandleRadius, 1, 2*nodeHandleRadius)
-        }
-        if (children[node].length && !collapsed[node]) {
-          ctx.setLineDash ([])
-          children[node].forEach ((child) => {
-            ctx.beginPath()
-            ctx.moveTo (nx[node], ny[node])
-            ctx.lineTo (nx[node], ny[child])
-            ctx.lineTo (nx[child], ny[child])
-            ctx.stroke()
-          })
-        } else {
-          ctx.setLineDash (rowConnectorDash)
-          ctx.beginPath()
-          ctx.moveTo (nx[node], ny[node])
-          ctx.lineTo (treeWidth, ny[node])
-          ctx.stroke()
-        }
-      }
-    })
-    ctx.strokeStyle = branchStrokeStyle
-    ctx.setLineDash ([])
-    nodesWithHandles.forEach ((node) => {
-      makeNodeHandlePath (node)
-      if (collapsed[node])
-        ctx.fillStyle = collapsedNodeHandleFillStyle
-      else {
-        ctx.fillStyle = nodeHandleFillStyle
-        ctx.stroke()
-      }
-      ctx.fill()
-    })
+    const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, treeDiv })
 
     // attach node toggle event handlers
     const canvasRect = treeCanvas.getBoundingClientRect(),
@@ -299,6 +320,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       const mouseX = parseInt (evt.clientX - canvasOffset.left)
       const mouseY = parseInt (evt.clientY - canvasOffset.top + container.scrollTop)
       let clickedNode = null
+      let ctx = treeCanvas.getContext('2d')
       nodesWithHandles.forEach ((node) => {
         makeNodeHandlePath (node)
         if (ctx.isPointInPath (mouseX, mouseY))
