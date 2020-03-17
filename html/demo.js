@@ -114,7 +114,8 @@ let opts = {
   collapsed: {},
   handler: { nodeClicked: (node) => {
     opts.collapsed[node] = !opts.collapsed[node];
-    opts.scrollTop = info.element.scrollTop;
+    opts.scrollTop = info.scrollTop();
+    opts.scrollLeft = info.scrollLeft();
     redraw()
   } },
   parent: mainDiv }

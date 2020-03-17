@@ -191,6 +191,84 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     })
     return { treeCanvas, nodesWithHandles, makeNodeHandlePath }
   }
+
+  // attach node-toggle handlers
+  const attachNodeToggleHandlers = (opts) => {
+    const { container, handler, treeCanvas, nodesWithHandles, makeNodeHandlePath } = opts
+    const canvasRect = treeCanvas.getBoundingClientRect(),
+          canvasOffset = { top: canvasRect.top + document.body.scrollTop,
+                           left: canvasRect.left + document.body.scrollLeft }
+    treeCanvas.addEventListener ('click', (evt) => {
+      evt.preventDefault()
+      const mouseX = parseInt (evt.clientX - canvasOffset.left)
+      const mouseY = parseInt (evt.clientY - canvasOffset.top + container.scrollTop)
+      let clickedNode = null
+      let ctx = treeCanvas.getContext('2d')
+      nodesWithHandles.forEach ((node) => {
+        makeNodeHandlePath (node)
+        if (ctx.isPointInPath (mouseX, mouseY))
+          clickedNode = node
+      })
+      if (clickedNode && handler.nodeClicked)
+        handler.nodeClicked (clickedNode)
+    })
+  }
+  
+  // attach drag handlers
+  const attachDragHandlers = (opts) => {
+    const { rowsDiv, container } = opts
+    let { scrollLeft, scrollTop } = opts
+
+    if (typeof(scrollLeft) !== 'undefined')
+      rowsDiv.scrollLeft = scrollLeft
+    let startX, rowsDivMouseDown;
+    rowsDiv.addEventListener("mousedown", e => {
+      rowsDivMouseDown = true;
+      rowsDiv.classList.add("active");
+      startX = e.pageX - rowsDiv.offsetLeft;
+      scrollLeft = rowsDiv.scrollLeft;
+    });
+    rowsDiv.addEventListener("mouseleave", () => {
+      rowsDivMouseDown = false;
+      rowsDiv.classList.remove("active");
+    });
+    rowsDiv.addEventListener("mouseup", () => {
+      rowsDivMouseDown = false;
+      rowsDiv.classList.remove("active");
+    });
+    rowsDiv.addEventListener("mousemove", e => {
+      if (!rowsDivMouseDown) return;
+      e.preventDefault();
+      const x = e.pageX - rowsDiv.offsetLeft;
+      const walk = x - startX;
+      rowsDiv.scrollLeft = scrollLeft - walk;
+    });
+
+    let startY, containerMouseDown;
+    if (typeof(scrollTop) !== 'undefined')
+      container.scrollTop = scrollTop
+    container.addEventListener("mousedown", e => {
+      containerMouseDown = true;
+      container.classList.add("active");
+      startY = e.pageY - container.offsetTop;
+      scrollTop = container.scrollTop;
+    });
+    container.addEventListener("mouseleave", () => {
+      containerMouseDown = false;
+      container.classList.remove("active");
+    });
+    container.addEventListener("mouseup", () => {
+      containerMouseDown = false;
+      container.classList.remove("active");
+    });
+    container.addEventListener("mousemove", e => {
+      if (!containerMouseDown) return;
+      e.preventDefault();
+      const y = e.pageY - container.offsetTop;
+      const walk = y - startY;
+      container.scrollTop = scrollTop - walk;
+    });
+  }
   
   // create DOM element
   const create = (type, parent, styles, attrs) => {
@@ -257,7 +335,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     // create the alignment DIVs
     if (opts.parent)
       opts.parent.innerHTML = ''
-    let container = create ('div', opts.parent, { display: 'flex', 'flex-direction': 'row',
+    let container = create ('div', opts.parent, { display: 'flex',
+                                                  'flex-direction': 'row',
                                                   width: containerWidth,
                                                   height: containerHeight,
                                                   'overflow-y': 'auto' }),
@@ -311,75 +390,17 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, treeDiv })
 
     // attach node toggle event handlers
-    const canvasRect = treeCanvas.getBoundingClientRect(),
-          canvasOffset = { top: canvasRect.top + document.body.scrollTop,
-                           left: canvasRect.left + document.body.scrollLeft }
-
-    treeCanvas.addEventListener ('click', (evt) => {
-      evt.preventDefault()
-      const mouseX = parseInt (evt.clientX - canvasOffset.left)
-      const mouseY = parseInt (evt.clientY - canvasOffset.top + container.scrollTop)
-      let clickedNode = null
-      let ctx = treeCanvas.getContext('2d')
-      nodesWithHandles.forEach ((node) => {
-        makeNodeHandlePath (node)
-        if (ctx.isPointInPath (mouseX, mouseY))
-          clickedNode = node
-      })
-      if (clickedNode && handler.nodeClicked)
-        handler.nodeClicked (clickedNode)
-    })
+    attachNodeToggleHandlers ({ container, handler, treeCanvas, nodesWithHandles, makeNodeHandlePath })
 
     // attach drag event handlers
-    let startX, scrollLeft, rowsDivMouseDown;
-    rowsDiv.addEventListener("mousedown", e => {
-      rowsDivMouseDown = true;
-      rowsDiv.classList.add("active");
-      startX = e.pageX - rowsDiv.offsetLeft;
-      scrollLeft = rowsDiv.scrollLeft;
-    });
-    rowsDiv.addEventListener("mouseleave", () => {
-      rowsDivMouseDown = false;
-      rowsDiv.classList.remove("active");
-    });
-    rowsDiv.addEventListener("mouseup", () => {
-      rowsDivMouseDown = false;
-      rowsDiv.classList.remove("active");
-    });
-    rowsDiv.addEventListener("mousemove", e => {
-      if (!rowsDivMouseDown) return;
-      e.preventDefault();
-      const x = e.pageX - rowsDiv.offsetLeft;
-      const walk = x - startX;
-      rowsDiv.scrollLeft = scrollLeft - walk;
-    });
-
-    let startY, containerMouseDown;
-    if (typeof(scrollTop) !== 'undefined')
-      container.scrollTop = scrollTop
-    container.addEventListener("mousedown", e => {
-      containerMouseDown = true;
-      container.classList.add("active");
-      startY = e.pageY - container.offsetTop;
-      scrollTop = container.scrollTop;
-    });
-    container.addEventListener("mouseleave", () => {
-      containerMouseDown = false;
-      container.classList.remove("active");
-    });
-    container.addEventListener("mouseup", () => {
-      containerMouseDown = false;
-      container.classList.remove("active");
-    });
-    container.addEventListener("mousemove", e => {
-      if (!containerMouseDown) return;
-      e.preventDefault();
-      const y = e.pageY - container.offsetTop;
-      const walk = y - startY;
-      container.scrollTop = scrollTop - walk;
-    });
+    attachDragHandlers ({ scrollLeft: opts.scrollLeft,
+                          scrollTop: opts.scrollTop,
+                          rowsDiv,
+                          container })
     
     return { element: container,
+             scrollTop: () => container.scrollTop,
+             scrollLeft: () => rowsDiv.scrollLeft,
              nodeImageCache,
              rowWidth }
   }
