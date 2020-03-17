@@ -64,7 +64,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
   
   // layout tree
   const layoutTree = (opts) => {
-    let { collapsed, ancestorCollapsed, rowData, genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight, containerHeight, treeSummary } = opts
+    let { collapsed, ancestorCollapsed, rowData, treeConfig, containerHeight, treeSummary } = opts
+    const { genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight } = treeConfig
     let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
     treeSummary.nodes.forEach ((node) => {
       const rh = (ancestorCollapsed[node] || !(rowData[node] || (collapsed[node] && !ancestorCollapsed[node]))) ? 0 : genericRowHeight
@@ -99,8 +100,10 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
 
   // render alignment
   const buildNodeImageCache = (opts) => {
-    const { treeSummary, rowData, maxNameImageWidth, genericRowHeight, nameFont, nameFontColor, nameFontSize, charFont, color, alignCharMetrics } = opts
+    const { treeSummary, rowData, alignConfig, fontConfig, alignCharMetrics } = opts
     let { nodeImageCache, rowWidth } = opts
+    const { maxNameImageWidth, genericRowHeight } = alignConfig
+    const { nameFont, nameFontColor, nameFontSize, charFont, color } = fontConfig
     nodeImageCache = nodeImageCache || {}
     rowWidth = rowWidth || 0
     treeSummary.nodes.forEach ((node) => {
@@ -139,7 +142,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
 
   // render tree
   const renderTree = (opts) => {
-    const { treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle } = opts
+    const { treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, treeConfig } = opts
+    const { branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle } = treeConfig
     let { treeDiv } = opts
     const { nx, ny, treeHeight } = treeLayout
     let treeCanvas = create ('canvas', treeDiv, null, { width: treeWidth,
@@ -305,6 +309,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
 
     const treeStrokeWidth = 1
     const availableTreeWidth = treeWidth - nodeHandleRadius - 2*treeStrokeWidth
+
     const charFontName = 'Menlo,monospace'
     const nameFontName = 'serif'
     const nameFontColor = 'black'
@@ -313,12 +318,16 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
-    
+
+    const treeConfig = { treeWidth, availableTreeWidth, genericRowHeight, branchStrokeStyle, nodeHandleStrokeStyle, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, treeStrokeWidth, scrollbarHeight }
+    const alignConfig = { maxNameImageWidth, genericRowHeight }
+    const fontConfig = { charFont, charFontName, color, nameFont, nameFontName, nameFontSize, nameFontColor }
+
     // get tree structure, state & layout
     const treeSummary = opts.treeSummary = opts.treeSummary || summarizeTree ({ root, branches, collapsed })
     const { children, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot } = treeSummary
     const ancestorCollapsed = getAncestorCollapsed ({ treeSummary, collapsed })
-    const treeLayout = layoutTree ({ collapsed, ancestorCollapsed, rowData, genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight, treeSummary, containerHeight: opts.height || null })
+    const treeLayout = layoutTree ({ collapsed, ancestorCollapsed, rowData, treeConfig, treeSummary, containerHeight: opts.height || null })
     const { nx, ny, rowHeight, treeHeight, containerHeight } = treeLayout
 
     // calculate font metrics
@@ -326,7 +335,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const { alignChars, charDescent, charWidth, charHeight } = alignCharMetrics
     
     // render the alignment names and rows as base64-encoded images
-    const { nodeImageCache, rowWidth } = buildNodeImageCache ({ treeSummary, rowData, maxNameImageWidth, genericRowHeight, nameFont, nameFontColor, nameFontSize, charFont, color, alignCharMetrics,
+    const { nodeImageCache, rowWidth } = buildNodeImageCache ({ treeSummary, rowData, alignConfig, fontConfig, alignCharMetrics,
                                                                 nodeImageCache: opts.nodeImageCache,
                                                                 rowWidth: opts.rowWidth })
     opts.nodeImageCache = nodeImageCache
@@ -387,7 +396,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     })
 
     // render the tree
-    const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, treeDiv })
+    const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, treeConfig, treeDiv })
 
     // attach node toggle event handlers
     attachNodeToggleHandlers ({ container, handler, treeCanvas, nodesWithHandles, makeNodeHandlePath })
