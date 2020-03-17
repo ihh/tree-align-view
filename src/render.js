@@ -7,9 +7,80 @@ lesk: { G: "orange", A: "orange", S: "orange", T: "orange", C: "green", V: "gree
 maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "darkgreen", N: "darkgreen", Q: "darkgreen", I: "blue", L: "blue", M: "blue", V: "blue", F: "lilac", W: "lilac", Y: "lilac", H: "darkblue", K: "orange", R: "orange", P: "pink", S: "red", T: "red" },
     cinema: { H: "blue", K: "blue", R: "blue", D: "red", E: "red", S: "green", T: "green", N: "green", Q: "green", A: "white", V: "white", L: "white", I: "white", M: "white", F: "magenta", W: "magenta", Y: "magenta", P: "brown", G: "brown", C: "yellow", B: "gray", Z: "gray", X: "gray", "-": "gray", ".": "gray" }
   }
-
   const defaultColorScheme = "maeditor"
 
+  // summarize tree
+  const summarizeTree = (opts) => {
+    const { root, branches } = opts
+    let children = {}, branchLength = {}
+    children[root] = []
+    branchLength[root] = 0
+    branches.forEach ((branch) => {
+      const parent = branch[0], child = branch[1], len = branch[2]
+      children[parent] = children[parent] || []
+      children[child] = children[child] || []
+      children[parent].push (child)
+      branchLength[child] = len
+    })
+    let nodes = [], nodeRank = {}, distFromRoot = {}, maxDistFromRoot = 0
+    const addNode = (node) => {
+      if (!node)
+        throw new Error ("All nodes must be named")
+      if (nodeRank[node])
+        throw new Error ("All node names must be unique (duplicate '" + node + "')")
+      nodeRank[node] = nodes.length
+      nodes.push (node)
+    }
+    const addSubtree = (node, parent) => {
+      distFromRoot[node] = (typeof(parent) !== 'undefined' ? distFromRoot[parent] : 0) + branchLength[node]
+      maxDistFromRoot = Math.max (maxDistFromRoot, distFromRoot[node])
+      const kids = children[node]
+      if (kids.length == 2) {
+        addSubtree (kids[0], node)
+        addNode (node)
+        addSubtree (kids[1], node)
+      } else {
+        addNode (node)
+        kids.forEach ((child) => addSubtree (child, node))
+      }
+    }
+    addSubtree (root)
+    return { root, branches, children, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot }
+  }
+
+  // get tree collapsed/open state
+  const getAncestorCollapsed = (opts) => {
+    const { treeSummary, collapsed } = opts
+    let ancestorCollapsed = {}
+    const setCollapsedState = (node, parent) => {
+      ancestorCollapsed[node] = ancestorCollapsed[parent] || collapsed[parent]
+      const kids = treeSummary.children[node]
+      if (kids)
+        kids.forEach ((child) => setCollapsedState (child, node))
+    }
+    setCollapsedState (treeSummary.root)
+    return ancestorCollapsed
+  }
+  
+  // get metrics and other info about alignment font/chars
+  const getAlignCharMetrics = (opts) => {
+    const { treeSummary, rowData, genericRowHeight, charFont } = opts
+    let isChar = {}
+    Object.keys(rowData).forEach ((node) => rowData[node].split('').forEach ((c) => isChar[c] = 1))
+    const alignChars = Object.keys(isChar).sort()
+    let charDescent = 0, charWidth = 0
+    alignChars.forEach ((c) => {
+      let measureCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
+      let measureContext = measureCanvas.getContext('2d')
+      measureContext.font = charFont
+      let charMetrics = measureContext.measureText (c)
+      charWidth = Math.max (charWidth, charMetrics.width)
+      charDescent = Math.max (charDescent, charMetrics.actualBoundingBoxDescent)
+    })
+    const charHeight = genericRowHeight
+    return { alignChars, charDescent, charWidth, charHeight }
+  }
+  
   // create DOM element
   const create = (type, parent, styles, attrs) => {
     const element = document.createElement (type)
@@ -57,41 +128,10 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
     
-    // get tree structure
-    let children = {}, branchLength = {}
-    children[root] = []
-    branchLength[root] = 0
-    branches.forEach ((branch) => {
-      const parent = branch[0], child = branch[1], len = branch[2]
-      children[parent] = children[parent] || []
-      children[child] = children[child] || []
-      children[parent].push (child)
-      branchLength[child] = len
-    })
-    let nodes = [], nodeRank = {}, ancestorCollapsed = {}, distFromRoot = {}, maxDistFromRoot = 0
-    const addNode = (node) => {
-      if (!node)
-        throw new Error ("All nodes must be named")
-      if (nodeRank[node])
-        throw new Error ("All node names must be unique (duplicate '" + node + "')")
-      nodeRank[node] = nodes.length
-      nodes.push (node)
-    }
-    const addSubtree = (node, parent) => {
-      distFromRoot[node] = (typeof(parent) !== 'undefined' ? distFromRoot[parent] : 0) + branchLength[node]
-      maxDistFromRoot = Math.max (maxDistFromRoot, distFromRoot[node])
-      ancestorCollapsed[node] = ancestorCollapsed[parent] || collapsed[parent]
-      const kids = children[node]
-      if (kids.length == 2) {
-        addSubtree (kids[0], node)
-        addNode (node)
-        addSubtree (kids[1], node)
-      } else {
-        addNode (node)
-        kids.forEach ((child) => addSubtree (child, node))
-      }
-    }
-    addSubtree (root)
+    // get tree structure & state
+    const treeSummary = opts.treeSummary = opts.treeSummary || summarizeTree ({ root, branches, collapsed })
+    const { children, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot } = treeSummary
+    const ancestorCollapsed = getAncestorCollapsed ({ treeSummary, collapsed })
 
     // layout tree
     let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
@@ -106,18 +146,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     containerHeight = containerHeight || (treeHeight + 'px')
 
     // calculate font metrics
-    let isChar = {}
-    Object.keys(rowData).forEach ((node) => rowData[node].split('').forEach ((c) => isChar[c] = 1))
-    let charDescent = 0, charWidth = 0
-    Object.keys(isChar).forEach ((c) => {
-      let measureCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
-      let measureContext = measureCanvas.getContext('2d')
-      measureContext.font = charFont
-      let charMetrics = measureContext.measureText (c)
-      charWidth = Math.max (charWidth, charMetrics.width)
-      charDescent = Math.max (charDescent, charMetrics.actualBoundingBoxDescent)
-    })
-    const charHeight = genericRowHeight
+    const alignCharMetrics = opts.alignCharMetrics = opts.alignCharMetrics || getAlignCharMetrics ({ treeSummary, rowData, genericRowHeight, charFont })
+    const { alignChars, charDescent, charWidth, charHeight } = alignCharMetrics
     
     // render the alignment names and rows as base64-encoded images
     nodes.forEach ((node) => {
