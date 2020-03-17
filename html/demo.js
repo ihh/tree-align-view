@@ -122,8 +122,6 @@ let opts = {
 let info
 const redraw = () => {
   info = render (opts)
-  opts.nodeImageCache = info.nodeImageCache
-  opts.rowWidth = info.rowWidth
 }
 redraw()
 

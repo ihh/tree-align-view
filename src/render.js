@@ -97,8 +97,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const charHeight = genericRowHeight
     return { alignChars, charDescent, charWidth, charHeight }
   }
-
-  // render alignment
+  
+  // render alignment rows
   const buildNodeImageCache = (opts) => {
     const { treeSummary, rowData, alignConfig, fontConfig, alignCharMetrics } = opts
     let { nodeImageCache, rowWidth } = opts
@@ -196,6 +196,55 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     return { treeCanvas, nodesWithHandles, makeNodeHandlePath }
   }
 
+  // create alignment DIVs
+  const buildAlignment = (opts) => {
+    const { rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, ancestorCollapsed, nodeImageCache, alignDiv } = opts
+    const { nameFontSize, charFontName } = fontConfig
+
+    let namesDiv = create ('div', alignDiv, { 'font-size': nameFontSize + 'px',
+                                              'margin-left': '2px',
+                                              'margin-right': '2px',
+                                              'overflow-x': 'auto',
+                                              'overflow-y': 'hidden',
+                                              'max-width': nameWidth + 'px',
+                                              'flex-shrink': 0,
+                                              'white-space': 'nowrap' }),
+        rowsDiv = create ('div', alignDiv, { 'font-family': charFontName,
+                                             'font-size': alignConfig.genericRowHeight + 'px',
+                                             'overflow-x': 'scroll',
+                                             'overflow-y': 'hidden',
+                                             cursor: 'move' })
+
+    // create the alignment names & rows, and attach the rendered images
+    treeSummary.nodes.forEach ((node) => {
+      const imageCache = nodeImageCache[node]
+      let nameDiv = create ('div', namesDiv, { height: rowHeight[node] + 'px',
+                                               display: 'flex',
+                                               'flex-direction': 'column',
+                                               'justify-content': 'center' })
+      let rowDiv = create ('div', rowsDiv, { width: rowWidth + 'px',
+                                             height: rowHeight[node] + 'px',
+                                             display: 'flex' })
+      if (!ancestorCollapsed[node]) {
+        const rh = rowHeight[node]
+        if (rh) {
+          let nameImg = create ('img', nameDiv, { width: imageCache.nameWidth,
+                                                  height: rh },
+                                { draggable: false })
+          nameImg.src = imageCache.name
+          if (rowData[node]) {
+            let rowImg = create ('img', rowDiv, null,
+                                 { draggable: false })
+            rowImg.src = imageCache.row
+          }
+        }
+      }
+    })
+
+    return { namesDiv, rowsDiv }
+  }
+
+  
   // attach node-toggle handlers
   const attachNodeToggleHandlers = (opts) => {
     const { container, handler, treeCanvas, nodesWithHandles, makeNodeHandlePath } = opts
@@ -341,7 +390,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     opts.nodeImageCache = nodeImageCache
     opts.rowWidth = rowWidth
 
-    // create the alignment DIVs
+    // create the tree & alignment container DIVs
     if (opts.parent)
       opts.parent.innerHTML = ''
     let container = create ('div', opts.parent, { display: 'flex',
@@ -354,46 +403,10 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
         alignDiv = create ('div', container, { display: 'flex',
                                                'flex-direction': 'row',
                                                overflow: 'hidden',
-                                               height: treeHeight + 'px' }),
-        namesDiv = create ('div', alignDiv, { 'font-size': nameFontSize + 'px',
-                                              'margin-left': '2px',
-                                              'margin-right': '2px',
-                                              'overflow-x': 'auto',
-                                              'overflow-y': 'hidden',
-                                              'max-width': nameWidth + 'px',
-                                              'flex-shrink': 0,
-                                              'white-space': 'nowrap' }),
-        rowsDiv = create ('div', alignDiv, { 'font-family': charFontName,
-                                             'font-size': genericRowHeight + 'px',
-                                             'overflow-x': 'scroll',
-                                             'overflow-y': 'hidden',
-                                             cursor: 'move' })
+                                               height: treeHeight + 'px' })
 
-    // create the alignment names & rows, and attach the rendered images
-    nodes.forEach ((node) => {
-      const imageCache = nodeImageCache[node]
-      let nameDiv = create ('div', namesDiv, { height: rowHeight[node] + 'px',
-                                               display: 'flex',
-                                               'flex-direction': 'column',
-                                               'justify-content': 'center' })
-      let rowDiv = create ('div', rowsDiv, { width: rowWidth + 'px',
-                                             height: rowHeight[node] + 'px',
-                                             display: 'flex' })
-      if (!ancestorCollapsed[node]) {
-        const rh = rowHeight[node]
-        if (rh) {
-          let nameImg = create ('img', nameDiv, { width: imageCache.nameWidth,
-                                                  height: rh },
-                                { draggable: false })
-          nameImg.src = imageCache.name
-          if (rowData[node]) {
-            let rowImg = create ('img', rowDiv, null,
-                                 { draggable: false })
-            rowImg.src = imageCache.row
-          }
-        }
-      }
-    })
+    // build the alignment
+    let { namesDiv, rowsDiv } = buildAlignment ({ rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, ancestorCollapsed, nodeImageCache, alignDiv })
 
     // render the tree
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, treeConfig, treeDiv })
