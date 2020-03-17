@@ -119,7 +119,11 @@ let opts = {
   } },
   parent: mainDiv }
 let info
-const redraw = () => { info = render (opts) }
+const redraw = () => {
+  info = render (opts)
+  opts.nodeImageCache = info.nodeImageCache
+  opts.rowWidth = info.rowWidth
+}
 redraw()
 
 
