@@ -62,6 +62,23 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     return ancestorCollapsed
   }
   
+  // layout tree
+  const layoutTree = (opts) => {
+    let { collapsed, ancestorCollapsed, rowData, genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight, containerHeight, treeSummary } = opts
+    let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
+    treeSummary.nodes.forEach ((node) => {
+      const rh = (ancestorCollapsed[node] || !(rowData[node] || (collapsed[node] && !ancestorCollapsed[node]))) ? 0 : genericRowHeight
+      nx[node] = nodeHandleRadius + treeStrokeWidth + availableTreeWidth * treeSummary.distFromRoot[node] / treeSummary.maxDistFromRoot
+      ny[node] = treeHeight + rh / 2
+      rowHeight[node] = rh
+      treeHeight += rh
+    })
+    treeHeight += scrollbarHeight
+    containerHeight = containerHeight || (treeHeight + 'px')
+    return { nx, ny, rowHeight, containerHeight, treeHeight }
+  }
+
+
   // get metrics and other info about alignment font/chars
   const getAlignCharMetrics = (opts) => {
     const { treeSummary, rowData, genericRowHeight, charFont } = opts
@@ -102,7 +119,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const genericRowHeight = opts.rowHeight || 24
     const nameFontSize = opts.nameFontSize || 12
     const containerWidth = opts.width || ''
-    let containerHeight = opts.height || null
     const treeWidth = opts.treeWidth || 200
     const nameWidth = opts.nameWidth || 200
     const branchStrokeStyle = opts.branchStrokeStyle || 'black'
@@ -128,22 +144,11 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
     
-    // get tree structure & state
+    // get tree structure, state & layout
     const treeSummary = opts.treeSummary = opts.treeSummary || summarizeTree ({ root, branches, collapsed })
     const { children, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot } = treeSummary
     const ancestorCollapsed = getAncestorCollapsed ({ treeSummary, collapsed })
-
-    // layout tree
-    let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
-    nodes.forEach ((node) => {
-      const rh = (ancestorCollapsed[node] || !(rowData[node] || (collapsed[node] && !ancestorCollapsed[node]))) ? 0 : genericRowHeight
-      nx[node] = nodeHandleRadius + treeStrokeWidth + availableTreeWidth * distFromRoot[node] / maxDistFromRoot
-      ny[node] = treeHeight + rh / 2
-      rowHeight[node] = rh
-      treeHeight += rh
-    })
-    treeHeight += scrollbarHeight
-    containerHeight = containerHeight || (treeHeight + 'px')
+    const { nx, ny, rowHeight, treeHeight, containerHeight } = layoutTree ({ collapsed, ancestorCollapsed, rowData, genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight, treeSummary, containerHeight: opts.height || null })
 
     // calculate font metrics
     const alignCharMetrics = opts.alignCharMetrics = opts.alignCharMetrics || getAlignCharMetrics ({ treeSummary, rowData, genericRowHeight, charFont })
