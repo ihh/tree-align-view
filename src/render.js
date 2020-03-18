@@ -309,6 +309,9 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       const walk = x - startX;
       scrollState.scrollLeft = rowsDiv.scrollLeft = scrollLeft - walk;
     });
+    rowsDiv.addEventListener("scroll", () => {
+      scrollState.scrollLeft = rowsDiv.scrollLeft
+    })
 
     let startY, containerMouseDown;
     container.addEventListener("mousedown", e => {
@@ -332,6 +335,9 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       const walk = y - startY;
       scrollState.scrollTop = container.scrollTop = scrollTop - walk;
     });
+    container.addEventListener("scroll", e => {
+      scrollState.scrollTop = container.scrollTop
+    })
   }
   
   // create DOM element
@@ -368,7 +374,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const disableEvents = opts.disableEvents
     const handler = opts.handler || {}
     const color = opts.color || colorScheme[opts.colorScheme || defaultColorScheme]
-    let scrollTop = opts.scrollTop
 
     const treeStrokeWidth = 1
     const availableTreeWidth = treeWidth - nodeHandleRadius - 2*treeStrokeWidth
