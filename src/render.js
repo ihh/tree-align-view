@@ -212,6 +212,25 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     return { treeCanvas, nodesWithHandles, makeNodeHandlePath }
   }
 
+  // create tree-alignment container DIVs
+  const createContainer = (opts) => {
+    const { parent, containerWidth, containerHeight, treeWidth, treeHeight } = opts
+    if (parent)
+      parent.innerHTML = ''
+    let container = create ('div', opts.parent, { display: 'flex',
+                                                  'flex-direction': 'row',
+                                                  width: containerWidth,
+                                                  height: containerHeight,
+                                                  'overflow-y': 'auto' }),
+        treeDiv = create ('div', container, { width: treeWidth + 'px',
+                                              height: treeHeight + 'px' }),
+        alignDiv = create ('div', container, { display: 'flex',
+                                               'flex-direction': 'row',
+                                               overflow: 'hidden',
+                                               height: treeHeight + 'px' })
+    return { container, treeDiv, alignDiv }
+  }
+  
   // create alignment DIVs
   const buildAlignment = (opts) => {
     const { rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache, alignDiv } = opts
@@ -261,8 +280,47 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     return { namesDiv, rowsDiv }
   }
 
+  // create node-toggle handler
+  const makeNodeClickHandler = (opts) => {
+    const { treeSummary, renderOpts } = opts
+    const { handler, collapsed, nodeScale, forceDisplayNode } = renderOpts
+    const collapseAnimationFrames = 5
+    const collapseAnimationDuration = 200
+    return (node) => {
+      if (!handler || !handler.nodeClicked || handler.nodeClicked (node)) {
+          let framesLeft = collapseAnimationFrames
+          const wasCollapsed = collapsed[node]
+          if (wasCollapsed)
+            collapsed[node] = false  // leaving collapsed[node] defined indicates to renderTree() that it should be rendered as an uncollapsed node. A bit of a hack...
+          const drawAnimationFrame = () => {
+            if (framesLeft) {
+              const scale = (wasCollapsed ? (collapseAnimationFrames + 1 - framesLeft) : framesLeft) / (collapseAnimationFrames + 1)
+              treeSummary.descendants[node].forEach ((desc) => { nodeScale[desc] = scale })
+              nodeScale[node] = 1 - scale
+              forceDisplayNode[node] = true
+              renderOpts.disableEvents = true
+            } else {
+              treeSummary.descendants[node].forEach ((desc) => { delete nodeScale[desc] })
+              delete nodeScale[node]
+              if (wasCollapsed) {
+                forceDisplayNode[node] = false
+                delete collapsed[node]
+              } else {
+                forceDisplayNode[node] = true
+                collapsed[node] = true
+              }
+              renderOpts.disableEvents = false
+            }
+            render (renderOpts)
+            if (framesLeft--)
+              setTimeout (drawAnimationFrame, collapseAnimationDuration / collapseAnimationFrames)
+          }
+          drawAnimationFrame (collapseAnimationFrames)
+        }
+    }
+  }
   
-  // attach node-toggle handlers
+  // attach node-toggle handler
   const attachNodeToggleHandlers = (opts) => {
     const { container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed } = opts
     const canvasRect = treeCanvas.getBoundingClientRect(),
@@ -397,9 +455,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
-
-    const collapseAnimationFrames = 5
-    const collapseAnimationDuration = 200
     
     const treeConfig = { treeWidth, availableTreeWidth, genericRowHeight, branchStrokeStyle, nodeHandleStrokeStyle, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, treeStrokeWidth, scrollbarHeight }
     const alignConfig = { maxNameImageWidth, genericRowHeight }
@@ -425,19 +480,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     opts.rowWidth = rowWidth
 
     // create the tree & alignment container DIVs
-    if (opts.parent)
-      opts.parent.innerHTML = ''
-    let container = create ('div', opts.parent, { display: 'flex',
-                                                  'flex-direction': 'row',
-                                                  width: containerWidth,
-                                                  height: containerHeight,
-                                                  'overflow-y': 'auto' }),
-        treeDiv = create ('div', container, { width: treeWidth + 'px',
-                                              height: treeHeight + 'px' }),
-        alignDiv = create ('div', container, { display: 'flex',
-                                               'flex-direction': 'row',
-                                               overflow: 'hidden',
-                                               height: treeHeight + 'px' })
+    let { container, treeDiv, alignDiv } = createContainer ({ parent: opts.parent, containerWidth, containerHeight, treeWidth, treeHeight })
 
     // build the alignment
     let { namesDiv, rowsDiv } = buildAlignment ({ rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache, alignDiv })
@@ -452,38 +495,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
                          rowsDiv,
                          container }
     if (!disableEvents) {
-      const nodeClicked = (node) => {
-        if (!handler.nodeClicked || handler.nodeClicked (node)) {
-          let framesLeft = collapseAnimationFrames
-          const wasCollapsed = collapsed[node]
-          if (wasCollapsed)
-            collapsed[node] = false  // leaving collapsed[node] defined indicates to renderTree() that it should be rendered as an uncollapsed node. A bit of a hack...
-          const drawAnimationFrame = () => {
-            if (framesLeft) {
-              const scale = (wasCollapsed ? (collapseAnimationFrames + 1 - framesLeft) : framesLeft) / (collapseAnimationFrames + 1)
-              treeSummary.descendants[node].forEach ((desc) => { nodeScale[desc] = scale })
-              nodeScale[node] = 1 - scale
-              forceDisplayNode[node] = true
-              opts.disableEvents = true
-            } else {
-              treeSummary.descendants[node].forEach ((desc) => { delete nodeScale[desc] })
-              delete nodeScale[node]
-              if (wasCollapsed) {
-                forceDisplayNode[node] = false
-                delete collapsed[node]
-              } else {
-                forceDisplayNode[node] = true
-                collapsed[node] = true
-              }
-              opts.disableEvents = false
-            }
-            render (opts)
-            if (framesLeft--)
-              setTimeout (drawAnimationFrame, collapseAnimationDuration / collapseAnimationFrames)
-          }
-          drawAnimationFrame (collapseAnimationFrames)
-        }
-      }
+      const nodeClicked = makeNodeClickHandler ({ treeSummary, renderOpts: opts })
       attachNodeToggleHandlers ({ container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed })
       attachDragHandlers (scrollOpts)
     }
