@@ -248,6 +248,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
                                              'font-size': alignConfig.genericRowHeight + 'px',
                                              'overflow-x': 'scroll',
                                              'overflow-y': 'hidden',
+                                             'user-select': 'none',
                                              cursor: 'move' })
 
     // create the alignment names & rows, and attach the rendered images
