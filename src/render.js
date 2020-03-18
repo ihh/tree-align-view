@@ -22,7 +22,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       children[parent].push (child)
       branchLength[child] = len
     })
-    let nodes = [], nodeRank = {}, distFromRoot = {}, maxDistFromRoot = 0
+    let nodes = [], nodeRank = {}, descendants = {}, distFromRoot = {}, maxDistFromRoot = 0
     const addNode = (node) => {
       if (!node)
         throw new Error ("All nodes must be named")
@@ -35,17 +35,20 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       distFromRoot[node] = (typeof(parent) !== 'undefined' ? distFromRoot[parent] : 0) + branchLength[node]
       maxDistFromRoot = Math.max (maxDistFromRoot, distFromRoot[node])
       const kids = children[node]
+      let clade = []
       if (kids.length == 2) {
-        addSubtree (kids[0], node)
+        clade = clade.concat (addSubtree (kids[0], node))
         addNode (node)
-        addSubtree (kids[1], node)
+        clade = clade.concat (addSubtree (kids[1], node))
       } else {
         addNode (node)
-        kids.forEach ((child) => addSubtree (child, node))
+        kids.forEach ((child) => clade = clade.concat (addSubtree (child, node)))
       }
+      descendants[node] = clade
+      return [node].concat (clade)
     }
     addSubtree (root)
-    return { root, branches, children, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot }
+    return { root, branches, children, descendants, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot }
   }
 
   // get tree collapsed/open state
@@ -64,11 +67,13 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
   
   // layout tree
   const layoutTree = (opts) => {
-    let { collapsed, ancestorCollapsed, rowData, treeConfig, containerHeight, treeSummary } = opts
+    let { treeState, rowData, treeConfig, containerHeight, treeSummary } = opts
+    const { collapsed, ancestorCollapsed, forceDisplayNode, nodeScale } = treeState
     const { genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight } = treeConfig
     let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
     treeSummary.nodes.forEach ((node) => {
-      const rh = (ancestorCollapsed[node] || !(rowData[node] || (collapsed[node] && !ancestorCollapsed[node]))) ? 0 : genericRowHeight
+      const rh = (typeof(nodeScale[node]) !== 'undefined' ? nodeScale[node] : 1)
+            * (((ancestorCollapsed[node] || !rowData[node]) && !forceDisplayNode[node]) ? 0 : genericRowHeight)
       nx[node] = nodeHandleRadius + treeStrokeWidth + availableTreeWidth * treeSummary.distFromRoot[node] / treeSummary.maxDistFromRoot
       ny[node] = treeHeight + rh / 2
       rowHeight[node] = rh
@@ -142,7 +147,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
 
   // render tree
   const renderTree = (opts) => {
-    const { treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, treeConfig } = opts
+    const { treeWidth, treeSummary, treeLayout, treeState, treeConfig } = opts
+    const { collapsed, ancestorCollapsed } = treeState
     const { branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle } = treeConfig
     let { treeDiv } = opts
     const { nx, ny, treeHeight } = treeLayout
@@ -266,14 +272,21 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
         nodeClicked (clickedNode)
     })
   }
+
+  // set scroll state
+  const setScrollState = (opts) => {
+    const { rowsDiv, container, scrollLeft, scrollTop } = opts
+    if (typeof(scrollLeft) !== 'undefined')
+      rowsDiv.scrollLeft = scrollLeft
+    if (typeof(scrollTop) !== 'undefined')
+      container.scrollTop = scrollTop
+  }
   
   // attach drag handlers
   const attachDragHandlers = (opts) => {
     const { rowsDiv, container } = opts
     let { scrollLeft, scrollTop, scrollState } = opts
 
-    if (typeof(scrollLeft) !== 'undefined')
-      scrollState.scrollLeft = rowsDiv.scrollLeft = scrollLeft
     let startX, rowsDivMouseDown;
     rowsDiv.addEventListener("mousedown", e => {
       rowsDivMouseDown = true;
@@ -298,8 +311,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     });
 
     let startY, containerMouseDown;
-    if (typeof(scrollTop) !== 'undefined')
-      scrollState.scrollTop = container.scrollTop = scrollTop
     container.addEventListener("mousedown", e => {
       containerMouseDown = true;
       container.classList.add("active");
@@ -341,6 +352,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     // All nodes MUST be uniquely named!
     const { root, branches, rowData } = opts  // mandatory arguments
     const collapsed = opts.collapsed = opts.collapsed || {}
+    const forceDisplayNode = opts.forceDisplayNode = opts.forceDisplayNode || {}
+    const nodeScale = opts.nodeScale = opts.nodeScale || {}
     const genericRowHeight = opts.rowHeight || 24
     const nameFontSize = opts.nameFontSize || 12
     const containerWidth = opts.width || ''
@@ -352,6 +365,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const nodeHandleFillStyle = opts.nodeHandleFillStyle || 'white'
     const collapsedNodeHandleFillStyle = opts.collapsedNodeHandleFillStyle || 'black'
     const rowConnectorDash = opts.rowConnectorDash || [2,2]
+    const disableEvents = opts.disableEvents
     const handler = opts.handler || {}
     const color = opts.color || colorScheme[opts.colorScheme || defaultColorScheme]
     let scrollTop = opts.scrollTop
@@ -368,15 +382,19 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
 
+    const collapseAnimationFrames = 10
+    const collapseAnimationDuration = 300
+    
     const treeConfig = { treeWidth, availableTreeWidth, genericRowHeight, branchStrokeStyle, nodeHandleStrokeStyle, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, treeStrokeWidth, scrollbarHeight }
     const alignConfig = { maxNameImageWidth, genericRowHeight }
     const fontConfig = { charFont, charFontName, color, nameFont, nameFontName, nameFontSize, nameFontColor }
 
     // get tree structure, state & layout
     const treeSummary = opts.treeSummary = opts.treeSummary || summarizeTree ({ root, branches, collapsed })
-    const { children, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot } = treeSummary
+    const { children, descendants, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot } = treeSummary
     const ancestorCollapsed = getAncestorCollapsed ({ treeSummary, collapsed })
-    const treeLayout = layoutTree ({ collapsed, ancestorCollapsed, rowData, treeConfig, treeSummary, containerHeight: opts.height || null })
+    const treeState = { collapsed, ancestorCollapsed, forceDisplayNode, nodeScale }
+    const treeLayout = layoutTree ({ treeState, rowData, treeConfig, treeSummary, containerHeight: opts.height || null })
     const { nx, ny, rowHeight, treeHeight, containerHeight } = treeLayout
 
     // calculate font metrics
@@ -409,23 +427,50 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     let { namesDiv, rowsDiv } = buildAlignment ({ rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, ancestorCollapsed, nodeImageCache, alignDiv })
 
     // render the tree
-    const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, treeConfig, treeDiv })
+    const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, treeState, treeConfig, treeDiv })
 
-    // attach node toggle event handlers
-    const nodeClicked = (node) => {
-      if (!handler.nodeClicked || handler.nodeClicked (node)) {
-        collapsed[node] = !collapsed[node]
-        render (opts)
+    // attach event handlers
+    const scrollOpts = { scrollLeft: opts.scrollLeft,
+                         scrollTop: opts.scrollTop,
+                         scrollState: opts,
+                         rowsDiv,
+                         container }
+    if (!disableEvents) {
+      const nodeClicked = (node) => {
+        if (!handler.nodeClicked || handler.nodeClicked (node)) {
+          let framesLeft = collapseAnimationFrames
+          const wasCollapsed = collapsed[node]
+          if (wasCollapsed)
+            collapsed[node] = false
+          const drawAnimationFrame = () => {
+            if (framesLeft) {
+              const scale = (wasCollapsed ? (collapseAnimationFrames + 1 - framesLeft) : framesLeft) / (collapseAnimationFrames + 1)
+              treeSummary.descendants[node].forEach ((desc) => { nodeScale[desc] = scale })
+              nodeScale[node] = 1 - scale
+              forceDisplayNode[node] = true
+              opts.disableEvents = true
+            } else {
+              treeSummary.descendants[node].forEach ((desc) => { delete nodeScale[desc] })
+              delete nodeScale[node]
+              if (wasCollapsed)
+                forceDisplayNode[node] = false
+              else {
+                forceDisplayNode[node] = true
+                collapsed[node] = true
+              }
+              opts.disableEvents = false
+            }
+            render (opts)
+            if (framesLeft--)
+              setTimeout (drawAnimationFrame, collapseAnimationDuration / collapseAnimationFrames)
+          }
+          drawAnimationFrame (collapseAnimationFrames)
+        }
       }
+      attachNodeToggleHandlers ({ container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed })
+      attachDragHandlers (scrollOpts)
     }
-    attachNodeToggleHandlers ({ container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed })
-
-    // attach drag event handlers
-    attachDragHandlers ({ scrollLeft: opts.scrollLeft,
-                          scrollTop: opts.scrollTop,
-                          scrollState: opts,
-                          rowsDiv,
-                          container })
+    setScrollState (scrollOpts)
     
     return { element: container,
              nodeImageCache,
