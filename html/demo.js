@@ -111,6 +111,7 @@ let opts = {
     'Q5V1W0_HALMA/25-182': 'TVVVVDQ.FTKHVGT.VQRRGFYPIGSN..PT.IEVATSWD....SVTVLGAVTDNG...DSFF.CWTEENLTRNHGIR.LLEALKDRFGE.................ELVVFLDRAG..YFYARDLWEHVSGERETETVG..............DSSVSCVRGDDLEVWYF.....PSKLPELNAVEGCWDQLQEWFKY..RLVPDISSLK'
   },
   height: '400px',  /* to test vertical scrolling */
+  handler: { alignClicked: true, alignMouseover: true },  // test click & mouseover
   parent: mainDiv }
 
 render (opts)
