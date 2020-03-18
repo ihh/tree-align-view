@@ -263,13 +263,18 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       if (!ancestorCollapsed[node]) {
         const rh = rowHeight[node]
         if (rh) {
-          let nameImg = create ('img', nameDiv, { width: imageCache.nameWidth,
-                                                  height: rh },
-                                { draggable: false })
-          nameImg.src = imageCache.name
+          if (typeof(treeState.nodeScale[node]) === 'undefined' || treeState.forceDisplayNode[node]) {
+            let nameSpan = create ('span', nameDiv)
+            nameSpan.innerText = node
+          } else {
+            let nameImg = create ('img', nameDiv, { width: imageCache.nameWidth,
+                                                    height: rh },
+                                  { draggable: false })
+            nameImg.src = imageCache.name
+          }
           if (rowData[node]) {
             let rowImg = create ('img', rowDiv,
-                                 { opacity: typeof(treeState.nodeScale[node]) === 'undefined' || treeState.forceDisplayNode[node] ? 1 : treeState.nodeScale[node] },
+                                 { opacity: treeState.nodeScale[node] },
                                  { draggable: false })
             rowImg.src = imageCache.row
           }
