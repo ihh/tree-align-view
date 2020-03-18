@@ -265,6 +265,9 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
                                            'overflow-x': 'scroll',
                                            'overflow-y': 'hidden',
                                            'user-select': 'none',
+                                           '-moz-user-select': 'none',
+                                           '-webkit-user-select': 'none',
+                                           '-ms-user-select': 'none',
                                            cursor: 'move' })
     
     // create the alignment names & rows, and attach the relevant divs or images
@@ -358,7 +361,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
   
   // attach node-toggle handler
   const attachNodeToggleHandlers = (opts) => {
-    const { container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed, treeLayout, divs } = opts
+    const { container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed } = opts
     const canvasRect = treeCanvas.getBoundingClientRect(),
           canvasOffset = { top: canvasRect.top + container.scrollTop + document.body.scrollTop,  // who knows why we need to include container.scrollTop here? not me. or 1 hour of my life
                            left: canvasRect.left + document.body.scrollLeft }
@@ -386,7 +389,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       rowsDiv.scrollLeft = scrollLeft
     if (typeof(scrollTop) !== 'undefined')
       container.scrollTop = scrollTop
-    divs.initScrollTop = scrollTop || 0
   }
   
   // attach drag handlers
@@ -556,7 +558,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     setScrollState (scrollOpts)
     if (!disableEvents) {
       const nodeClicked = makeNodeClickHandler ({ treeSummary, renderOpts: opts })
-      attachNodeToggleHandlers ({ container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed, treeLayout, divs: opts.divs })
+      attachNodeToggleHandlers ({ container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed })
       attachDragHandlers (scrollOpts)
     }
     
