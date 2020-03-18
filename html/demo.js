@@ -111,18 +111,8 @@ let opts = {
     'Q5V1W0_HALMA/25-182': 'TVVVVDQ.FTKHVGT.VQRRGFYPIGSN..PT.IEVATSWD....SVTVLGAVTDNG...DSFF.CWTEENLTRNHGIR.LLEALKDRFGE.................ELVVFLDRAG..YFYARDLWEHVSGERETETVG..............DSSVSCVRGDDLEVWYF.....PSKLPELNAVEGCWDQLQEWFKY..RLVPDISSLK'
   },
   height: '400px',  /* to test vertical scrolling */
-  collapsed: {},
-  handler: { nodeClicked: (node) => {
-    opts.collapsed[node] = !opts.collapsed[node];
-    opts.scrollTop = info.scrollTop();
-    opts.scrollLeft = info.scrollLeft();
-    redraw()
-  } },
   parent: mainDiv }
-let info
-const redraw = () => {
-  info = render (opts)
-}
-redraw()
+
+render (opts)
 
 

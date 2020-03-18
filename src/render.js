@@ -247,7 +247,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
   
   // attach node-toggle handlers
   const attachNodeToggleHandlers = (opts) => {
-    const { container, handler, treeCanvas, nodesWithHandles, makeNodeHandlePath } = opts
+    const { container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed } = opts
     const canvasRect = treeCanvas.getBoundingClientRect(),
           canvasOffset = { top: canvasRect.top + document.body.scrollTop,
                            left: canvasRect.left + document.body.scrollLeft }
@@ -262,18 +262,18 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
         if (ctx.isPointInPath (mouseX, mouseY))
           clickedNode = node
       })
-      if (clickedNode && handler.nodeClicked)
-        handler.nodeClicked (clickedNode)
+      if (clickedNode)
+        nodeClicked (clickedNode)
     })
   }
   
   // attach drag handlers
   const attachDragHandlers = (opts) => {
     const { rowsDiv, container } = opts
-    let { scrollLeft, scrollTop } = opts
+    let { scrollLeft, scrollTop, scrollState } = opts
 
     if (typeof(scrollLeft) !== 'undefined')
-      rowsDiv.scrollLeft = scrollLeft
+      scrollState.scrollLeft = rowsDiv.scrollLeft = scrollLeft
     let startX, rowsDivMouseDown;
     rowsDiv.addEventListener("mousedown", e => {
       rowsDivMouseDown = true;
@@ -294,12 +294,12 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       e.preventDefault();
       const x = e.pageX - rowsDiv.offsetLeft;
       const walk = x - startX;
-      rowsDiv.scrollLeft = scrollLeft - walk;
+      scrollState.scrollLeft = rowsDiv.scrollLeft = scrollLeft - walk;
     });
 
     let startY, containerMouseDown;
     if (typeof(scrollTop) !== 'undefined')
-      container.scrollTop = scrollTop
+      scrollState.scrollTop = container.scrollTop = scrollTop
     container.addEventListener("mousedown", e => {
       containerMouseDown = true;
       container.classList.add("active");
@@ -319,7 +319,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       e.preventDefault();
       const y = e.pageY - container.offsetTop;
       const walk = y - startY;
-      container.scrollTop = scrollTop - walk;
+      scrollState.scrollTop = container.scrollTop = scrollTop - walk;
     });
   }
   
@@ -340,7 +340,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     // opts.rowData is a map of seqname->row
     // All nodes MUST be uniquely named!
     const { root, branches, rowData } = opts  // mandatory arguments
-    const collapsed = opts.collapsed || {}
+    const collapsed = opts.collapsed = opts.collapsed || {}
     const genericRowHeight = opts.rowHeight || 24
     const nameFontSize = opts.nameFontSize || 12
     const containerWidth = opts.width || ''
@@ -412,17 +412,22 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, collapsed, ancestorCollapsed, treeConfig, treeDiv })
 
     // attach node toggle event handlers
-    attachNodeToggleHandlers ({ container, handler, treeCanvas, nodesWithHandles, makeNodeHandlePath })
+    const nodeClicked = (node) => {
+      if (!handler.nodeClicked || handler.nodeClicked (node)) {
+        collapsed[node] = !collapsed[node]
+        render (opts)
+      }
+    }
+    attachNodeToggleHandlers ({ container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed })
 
     // attach drag event handlers
     attachDragHandlers ({ scrollLeft: opts.scrollLeft,
                           scrollTop: opts.scrollTop,
+                          scrollState: opts,
                           rowsDiv,
                           container })
     
     return { element: container,
-             scrollTop: () => container.scrollTop,
-             scrollLeft: () => rowsDiv.scrollLeft,
              nodeImageCache,
              rowWidth }
   }
