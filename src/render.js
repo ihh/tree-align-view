@@ -73,7 +73,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     let nx = {}, ny = {}, rowHeight = {}, treeHeight = 0
     treeSummary.nodes.forEach ((node) => {
       const rh = (typeof(nodeScale[node]) !== 'undefined' ? nodeScale[node] : 1)
-            * (((ancestorCollapsed[node] || !rowData[node]) && !forceDisplayNode[node]) ? 0 : genericRowHeight)
+            * ((ancestorCollapsed[node] || (!rowData[node] && !forceDisplayNode[node])) ? 0 : genericRowHeight)
       nx[node] = nodeHandleRadius + treeStrokeWidth + availableTreeWidth * treeSummary.distFromRoot[node] / treeSummary.maxDistFromRoot
       ny[node] = treeHeight + rh / 2
       rowHeight[node] = rh
@@ -145,10 +145,11 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     return { nodeImageCache, rowWidth }
   }
 
+  // set alpha for scaled nodes
   // render tree
   const renderTree = (opts) => {
     const { treeWidth, treeSummary, treeLayout, treeState, treeConfig } = opts
-    const { collapsed, ancestorCollapsed } = treeState
+    const { collapsed, ancestorCollapsed, forceDisplayNode, nodeScale } = treeState
     const { branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle } = treeConfig
     let { treeDiv } = opts
     const { nx, ny, treeHeight } = treeLayout
@@ -161,10 +162,15 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       ctx.beginPath()
       ctx.arc (nx[node], ny[node], nodeHandleRadius, 0, 2*Math.PI)
     }
+    const setAlpha = (node) => {
+      const scale = nodeScale[node]
+      ctx.globalAlpha = (typeof(scale) === 'undefined' || forceDisplayNode[node]) ? 1 : scale
+    }
     let nodesWithHandles = treeSummary.nodes.filter ((node) => !ancestorCollapsed[node] && treeSummary.children[node].length)
     treeSummary.nodes.forEach ((node) => {
       if (!ancestorCollapsed[node]) {
         if (!treeSummary.children[node].length) {
+          setAlpha (node)
           ctx.setLineDash ([])
           ctx.beginPath()
           ctx.fillRect (nx[node], ny[node] - nodeHandleRadius, 1, 2*nodeHandleRadius)
@@ -172,13 +178,17 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
         if (treeSummary.children[node].length && !collapsed[node]) {
           ctx.setLineDash ([])
           treeSummary.children[node].forEach ((child) => {
+            setAlpha (child)
             ctx.beginPath()
             ctx.moveTo (nx[node], ny[node])
             ctx.lineTo (nx[node], ny[child])
             ctx.lineTo (nx[child], ny[child])
             ctx.stroke()
           })
-        } else {
+        }
+        ctx.globalAlpha = 1
+        if (treeSummary.children[node].length === 0 || forceDisplayNode[node]) {
+          setAlpha (node)
           ctx.setLineDash (rowConnectorDash)
           ctx.beginPath()
           ctx.moveTo (nx[node], ny[node])
@@ -190,8 +200,9 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     ctx.strokeStyle = branchStrokeStyle
     ctx.setLineDash ([])
     nodesWithHandles.forEach ((node) => {
+      setAlpha (node)
       makeNodeHandlePath (node)
-      if (collapsed[node])
+      if (collapsed[node] || (forceDisplayNode[node] && collapsed[node] !== false))
         ctx.fillStyle = collapsedNodeHandleFillStyle
       else {
         ctx.fillStyle = nodeHandleFillStyle
@@ -446,7 +457,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
           let framesLeft = collapseAnimationFrames
           const wasCollapsed = collapsed[node]
           if (wasCollapsed)
-            collapsed[node] = false
+            collapsed[node] = false  // leaving collapsed[node] defined indicates to renderTree() that it should be rendered as an uncollapsed node. A bit of a hack...
           const drawAnimationFrame = () => {
             if (framesLeft) {
               const scale = (wasCollapsed ? (collapseAnimationFrames + 1 - framesLeft) : framesLeft) / (collapseAnimationFrames + 1)
@@ -457,9 +468,10 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
             } else {
               treeSummary.descendants[node].forEach ((desc) => { delete nodeScale[desc] })
               delete nodeScale[node]
-              if (wasCollapsed)
+              if (wasCollapsed) {
                 forceDisplayNode[node] = false
-              else {
+                delete collapsed[node]
+              } else {
                 forceDisplayNode[node] = true
                 collapsed[node] = true
               }
