@@ -145,7 +145,6 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     return { nodeImageCache, rowWidth }
   }
 
-  // set alpha for scaled nodes
   // render tree
   const renderTree = (opts) => {
     const { treeWidth, treeSummary, treeLayout, treeState, treeConfig } = opts
@@ -215,7 +214,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
 
   // create alignment DIVs
   const buildAlignment = (opts) => {
-    const { rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, ancestorCollapsed, nodeImageCache, alignDiv } = opts
+    const { rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache, alignDiv } = opts
     const { nameFontSize, charFontName } = fontConfig
 
     let namesDiv = create ('div', alignDiv, { 'font-size': nameFontSize + 'px',
@@ -250,7 +249,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
                                 { draggable: false })
           nameImg.src = imageCache.name
           if (rowData[node]) {
-            let rowImg = create ('img', rowDiv, null,
+            let rowImg = create ('img', rowDiv,
+                                 { opacity: typeof(treeState.nodeScale[node]) === 'undefined' || treeState.forceDisplayNode[node] ? 1 : treeState.nodeScale[node] },
                                  { draggable: false })
             rowImg.src = imageCache.row
           }
@@ -398,8 +398,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
 
-    const collapseAnimationFrames = 10
-    const collapseAnimationDuration = 300
+    const collapseAnimationFrames = 5
+    const collapseAnimationDuration = 200
     
     const treeConfig = { treeWidth, availableTreeWidth, genericRowHeight, branchStrokeStyle, nodeHandleStrokeStyle, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, treeStrokeWidth, scrollbarHeight }
     const alignConfig = { maxNameImageWidth, genericRowHeight }
@@ -440,7 +440,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
                                                height: treeHeight + 'px' })
 
     // build the alignment
-    let { namesDiv, rowsDiv } = buildAlignment ({ rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, ancestorCollapsed, nodeImageCache, alignDiv })
+    let { namesDiv, rowsDiv } = buildAlignment ({ rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache, alignDiv })
 
     // render the tree
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, treeState, treeConfig, treeDiv })
