@@ -13,14 +13,18 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
   // summarize alignment
   const summarizeAlignment = (opts) => {
     const { rowData } = opts
-    let alignColToSeqPos = {}
+    let alignColToSeqPos = {}, columns
     Object.keys(rowData).forEach ((node) => {
+      const row = rowData[node]
+      if (typeof(columns) !== 'undefined' && columns != row.length)
+        console.error ("Inconsistent row lengths")
+      columns = row.length
       let pos = 0
-      alignColToSeqPos[node] = rowData[node].split('').map ((c) => {
+      alignColToSeqPos[node] = row.split('').map ((c) => {
         return isGapChar(c) ? pos : pos++
       })
     })
-    return { alignColToSeqPos }
+    return { alignColToSeqPos, columns }
   }
 
   const isGapChar = (c) => { return c == '-' || c == '.' }
@@ -112,7 +116,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       let measureContext = measureCanvas.getContext('2d')
       measureContext.font = charFont
       charMetrics[c] = measureContext.measureText (c)
-      charWidth = Math.max (charWidth, charMetrics[c].width)
+      charWidth = Math.max (charWidth, Math.ceil (charMetrics[c].width))
       charDescent = Math.max (charDescent, charMetrics[c].actualBoundingBoxDescent)
       charLeft = Math.min (charLeft, charMetrics[c].actualBoundingBoxLeft)
     })
@@ -146,8 +150,10 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       }
 
       if (rowData[node] && !imageCache.row) {
-        rowWidth = Math.max (rowWidth, rowData[node].length * alignCharMetrics.charWidth)
-        let rowDiv = create ('div', null, { width: rowWidth,
+        rowWidth = Math.max (rowWidth, Math.ceil (rowData[node].length * alignCharMetrics.charWidth))
+        let rowDiv = create ('div', null, { display: 'flex',
+                                            'flex-direction': 'row',
+                                            width: rowWidth,
                                             height: genericRowHeight })
         let rowCanvas = create ('canvas', null, null, { width: rowWidth,
                                                         height: genericRowHeight })
@@ -158,7 +164,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
           const col = color[c.toUpperCase()] || color['default'] || 'black'
           rowContext.fillStyle = col
           rowContext.fillText (c, pos * alignCharMetrics.charWidth, genericRowHeight - alignCharMetrics.charDescent)
-          let charSpan = create ('span', rowDiv, { color: col })
+          let charSpan = create ('span', rowDiv, { color: col, width: alignCharMetrics.charWidth })
           charSpan.innerText = c
         })
         imageCache.row = rowCanvas.toDataURL()
@@ -261,7 +267,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
   
   // create alignment DIVs
   const buildAlignment = (opts) => {
-    const { rowData, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache, divs } = opts
+    const { rowData, structure, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache, divs } = opts
     const { nameFontSize, charFontName } = fontConfig
 
     let rebuilt = { row: {} }
@@ -305,7 +311,15 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
           if (rh) {
             if (typeof(treeState.nodeScale[node]) === 'undefined' || treeState.forceDisplayNode[node]) {
               let nameSpan = create ('span', nameDiv)
-              nameSpan.innerText = node
+              if (structure[node]) {
+                let nameAnchor = create ('a', nameSpan, null, { href: '#' })
+                nameAnchor.addEventListener ('click', (evt) => {
+                  evt.preventDefault()
+                  loadStructure ({ node, structure: structure[node] })
+                })
+                nameAnchor.innerText = node
+              } else
+                nameSpan.innerText = node
             } else {
               let nameImg = create ('img', nameDiv, { width: imageCache.nameWidth,
                                                       height: rh },
@@ -342,7 +356,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const collapseAnimationFrames = 5
     const collapseAnimationDuration = 200
     return (node) => {
-      if (!handler || !handler.nodeClicked || handler.nodeClicked (node)) {
+      if (!handler || !handler.nodeClick || handler.nodeClick (node)) {
         let framesLeft = collapseAnimationFrames
         const wasCollapsed = collapsed[node]
         if (wasCollapsed)
@@ -485,29 +499,13 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
         const colToSeqPos = alignSummary.alignColToSeqPos[node]
         const seqData = rowData[node]
         const resolveCoords = (evt) => {
-          const column = resolveColumn(evt), seqPos = colToSeqPos[column], c = seqData.charAt(column)
-          return { node, row, column, seqPos, c }
+          const column = resolveColumn(evt), seqPos = colToSeqPos && colToSeqPos[column], c = seqData && seqData.charAt(column)
+          return { node, row, column, seqPos, c, isGap: isGapChar(c) }
         }
-        if (handler.alignClicked)
-          rowDiv.addEventListener ('click', (evt) => {
-            if (divs.wasPanning)
-              divs.wasPanning = false  // ignore click after drag
-            else {
-              const coords = resolveCoords (evt)
-              if (typeof(handler.alignClicked) === 'function')
-                handler.alignClicked (coords)
-              else
-                console.warn ('Clicked ' + coords.node + ' column ' + coords.column + (isGapChar(coords.c) ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
-            }
-          })
+        if (handler.alignClick)
+          rowDiv.addEventListener ('click', (evt) => handler.alignClick (resolveCoords (evt)))
         if (handler.alignMouseover)
-          rowDiv.addEventListener ('mouseover', (evt) => {
-            const coords = resolveCoords (evt)
-            if (typeof(handler.alignMouseover) === 'function')
-              handler.alignMouseover (coords)
-            else
-              console.warn ('Mouseover ' + coords.node + ' column ' + coords.column + (isGapChar(coords.c) ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
-          })
+          rowDiv.addEventListener ('mouseover', (evt) => handler.alignMouseover (resolveCoords (evt)))
       }
     })
   }
@@ -522,6 +520,12 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     }
   }
 
+  // load a PDB structure
+  const loadStructure = (opts) => {
+    const { node, structure } = opts
+    console.warn ('loading ' + structure + ' for ' + node)
+  }
+  
   // create DOM element
   const create = (type, parent, styles, attrs) => {
     const element = document.createElement (type)
@@ -581,7 +585,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const animating = opts.animating
     const handler = opts.handler || {}
     const color = opts.color || colorScheme[opts.colorScheme || defaultColorScheme]
-
+    const structure = opts.structure || {}
+    
     const treeStrokeWidth = 1
     const availableTreeWidth = treeWidth - nodeHandleRadius - 2*treeStrokeWidth
 
@@ -623,7 +628,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     extend (divs, { container, treeDiv, alignDiv })
 
     // build the alignment
-    let { namesDiv, rowsDiv, rowDivList, rebuilt } = buildAlignment ({ rowData, divs, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache })
+    let { namesDiv, rowsDiv, rowDivList, rebuilt } = buildAlignment ({ rowData, divs, structure, fontConfig, alignConfig, nameWidth, rowWidth, rowHeight, treeSummary, treeState, ancestorCollapsed, nodeImageCache })
     extend (divs, { namesDiv, rowsDiv, rowDivList })
 
     // render the tree
