@@ -1,7 +1,8 @@
 let mainDiv = document.getElementById ('main')
 
-// alignment created with:
-// historian spike_rec_bind.fasta -output json -v3 -nj -careful -noancs
+// Sequences from Pfam family PF09408 and https://www.nature.com/articles/s41591-020-0820-9
+// Alignment created using https://github.com/evoldoers/historian as follows:
+//  historian spike_rec_bind.fasta -output json -v3 -nj -careful -noancs
 
 let opts = {
   data: {
@@ -99,11 +100,15 @@ let opts = {
       "H9AA65_9BETC/326-540": "PNLP-DCNIEAWLNDKSV--PSPLNWERKTFSNCNFNMSSLMSFIQADSFTCNNIDAAKIYGMCFSSITIDKFAIPNGRKVDLQLGNLGYLQSFNYKI--DTSATSCQL-----------------YYNLPA-AN---VS------VSRLNPSTWNRRF--GFTEQSVFKPQ--------PAGF-FTAHDVVY-AQHC-----------F---K----------AP---T----T------F----------C------------------------PCKLNGSLCVGSG-----SGVDAGFKH----T-----G--IG------T-------------------CPAGTNYLTCY---------------NSV---Q-----------CN------------------CQCTPDPI-------------L----------------------",
       "B7U2P4_9BETC/326-540": "PNLP-DCNIEAWLNDKSV--PSPLNWERKTFSNCNFNMSSLMSFIQADSFTCNNIDAAKIYGMCFSSITIDKFAIPNGRKVDLQLGNLGYLQSFNYRI--DTTATSCQL-----------------YYNLPA-AN---VS------VSRFNPSTWNRRF--GFTEQSVFKPQ--------PAGV-FTDHDVVY-AQHC-----------F---K----------AP---T----N------F----------C------------------------PCKLDGSLCVGSG-----SGIDAGYKN----T-----G--IG------T-------------------CPAGTNYLTCH---------------NAA---Q-----------CD------------------CLCTPDPI-------------T----------------------",
       "Q06BD7_9BETC/326-540": "PNLP-DCNIEAWLNDKSV--PSPLNWERKTFSNCNFNMSSLMSFIQADSFTCNNIDAAKIYGMCFSSITIDKFAIPNGRKVDLQLGNLGYLQSFNYRI--DTTATSCQL-----------------YYNLPA-AN---VS------VSRFNPSTWNRRF--GFTEQSVFKPQ--------PAGV-FTDHDVVY-AQHC-----------F---K----------AP---T----N------F----------C------------------------PCKLDGSLCVGNG-----PGIDAGYKT----S-----G--IG------T-------------------CPAGTNYLTCH---------------NAA---Q-----------CN------------------CLCTPDPI-------------T----------------------"
+    },
+    structure: {
+      "SPIKE_CVHSA/317-569": {
+        pdb: "pdb/5wrg.pdb",
+      }
     }
   },
   config: {
     height: '400px',  /* to test vertical scrolling */
-/*
     handler: {
       alignClick: (coords) => {
         console.warn ('Click ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
@@ -112,7 +117,6 @@ let opts = {
         console.warn ('Mouseover ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
       }
     },
-*/
     parent: mainDiv
   }
 }
