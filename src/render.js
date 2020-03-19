@@ -9,7 +9,8 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     cinema: { H: "blue", K: "blue", R: "blue", D: "red", E: "red", S: "green", T: "green", N: "green", Q: "green", A: "white", V: "white", L: "white", I: "white", M: "white", F: "magenta", W: "magenta", Y: "magenta", P: "brown", G: "brown", C: "yellow", B: "gray", Z: "gray", X: "gray", "-": "gray", ".": "gray" }
   }
   const defaultColorScheme = "maeditor"
-
+  const getColor = (c, color) => color[c.toUpperCase()] || color['default'] || 'black';
+  
   // summarize alignment
   const summarizeAlignment = (opts) => {
     const { rowData } = opts
@@ -106,7 +107,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
 
   // get metrics and other info about alignment font/chars
   const getAlignCharMetrics = (opts) => {
-    const { treeSummary, rowData, genericRowHeight, charFont } = opts
+    const { treeSummary, rowData, genericRowHeight, charFont, color } = opts
     let isChar = {}
     Object.keys(rowData).forEach ((node) => rowData[node].split('').forEach ((c) => isChar[c] = 1))
     const alignChars = Object.keys(isChar).sort()
@@ -120,8 +121,17 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
       charDescent = Math.max (charDescent, charMetrics[c].actualBoundingBoxDescent)
       charLeft = Math.min (charLeft, charMetrics[c].actualBoundingBoxLeft)
     })
+    let charImage = {}
+    alignChars.forEach ((c) => {
+      let charCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
+      let charContext = charCanvas.getContext('2d')
+      charContext.font = charFont
+      charContext.fillStyle = getColor (c, color)
+      charContext.fillText (c, 0, genericRowHeight - charDescent)
+      charImage[c] = charCanvas.toDataURL()
+    })
     const charHeight = genericRowHeight
-    return { alignChars, charMetrics, charLeft, charDescent, charWidth, charHeight }
+    return { alignChars, charMetrics, charLeft, charDescent, charWidth, charHeight, charImage }
   }
   
   // pre-render alignment rows
@@ -161,7 +171,7 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
         rowContext.font = charFont
         rowData[node].split('').forEach ((c, pos) => {
           const charMetrics = alignCharMetrics.charMetrics[c]
-          const col = color[c.toUpperCase()] || color['default'] || 'black'
+          const col = getColor (c, color)
           rowContext.fillStyle = col
           rowContext.fillText (c, pos * alignCharMetrics.charWidth, genericRowHeight - alignCharMetrics.charDescent)
           let charSpan = create ('span', rowDiv, { color: col, width: alignCharMetrics.charWidth })
@@ -613,8 +623,18 @@ maeditor: { A: "lightgreen", G: "lightgreen", C: "green", D: "darkgreen", E: "da
     const { nx, ny, rowHeight, treeHeight, containerHeight } = treeLayout
 
     // calculate font metrics
-    const alignCharMetrics = opts.alignCharMetrics = opts.alignCharMetrics || getAlignCharMetrics ({ treeSummary, rowData, genericRowHeight, charFont })
+    const alignCharMetrics = opts.alignCharMetrics = opts.alignCharMetrics || getAlignCharMetrics ({ treeSummary, rowData, genericRowHeight, charFont, color })
     const { alignChars, charDescent, charWidth, charHeight } = alignCharMetrics
+
+
+    // TODO: restructure the following so alignment (rows and names) are built - once only - as a series of alternating text and image spans
+    // with {collapsed,forceDisplayNode,columnHidden} objects controlling the hiding of rows & columns
+    //  and {nodeScale,columnScale} objects controlling the animations
+    // Attach the alignment event listeners (drag, mouseover, click) once when the alignment is first built
+    // Event listeners know which row & column they're associated with, so we can lose makeColumnResolver and also buildNodeImageCache
+    // (and rename alignCharMetrics something more appropriate, like alignCharImageCache)
+    // After building, track the list of (text & image) spans associated with each row and each column
+    // During an animation, hide the text spans and scale/fade the image spans
     
     // render the alignment names and rows as base64-encoded images
     const { nodeImageCache, rowWidth } = buildNodeImageCache ({ treeSummary, rowData, alignConfig, fontConfig, alignCharMetrics,
