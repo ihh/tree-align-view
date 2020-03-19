@@ -206,6 +206,8 @@ const { render } = (() => {
     nodesWithHandles.forEach ((node) => {
       setAlpha (node)
       makeNodeHandlePath (node)
+      // hack: collapsed[node]===false means that we are animating the open->collapsed transition
+      // so the node's descendants are visible, but the node itself is rendered as collapsed
       if (collapsed[node] || (forceDisplayNode[node] && collapsed[node] !== false))
         ctx.fillStyle = collapsedNodeHandleFillStyle
       else {
@@ -446,7 +448,7 @@ const { render } = (() => {
         let framesLeft = collapseAnimationFrames
         const wasCollapsed = collapsed[node]
         if (wasCollapsed)
-          collapsed[node] = false  // leaving collapsed[node] defined indicates to renderTree() that it should be rendered as an uncollapsed node. A bit of a hack...
+          collapsed[node] = false  // when collapsed[node]=false, it's rendered by renderTree() as a collapsed node, but its descendants are still visible. A bit of a hack...
         const drawAnimationFrame = () => {
           if (framesLeft) {
             const scale = (wasCollapsed ? (collapseAnimationFrames + 1 - framesLeft) : framesLeft) / (collapseAnimationFrames + 1)
@@ -667,7 +669,7 @@ const { render } = (() => {
     const charFontName = 'Menlo,monospace'
     const nameFontName = 'serif'
     const nameFontColor = 'black'
-    const scrollbarHeight = 20  // hack
+    const scrollbarHeight = 20  // hack, could be platform-dependent, a bit fragile...
     const maxNameImageWidth = 1000  // hack, a bit arbitrary
     
     const charFont = genericRowHeight + 'px ' + charFontName
