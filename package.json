@@ -15,6 +15,10 @@
   },
   "homepage": "https://github.com/ihh/tree-align-view#readme",
   "dependencies": {
+    "bio-pv": "^1.8.1",
+    "jukes-cantor": "^1.0.1",
+    "neighbor-joining": "^1.0.4",
+    "newick-js": "^1.1.1",
     "stockholm-js": "^1.0.4"
   },
   "devDependencies": {}
