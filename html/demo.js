@@ -103,12 +103,13 @@ let opts = {
     },
     structure: {
       "SPIKE_CVHSA/317-569": {
-        pdb: "pdb/5wrg.pdb",
+        path: "pdb/5wrg.pdb",
+        startPos: 317,
+        chain: 'A'
       }
     }
   },
   config: {
-    height: '400px',  /* to test vertical scrolling */
     handler: {
       alignClick: (coords) => {
         console.warn ('Click ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')

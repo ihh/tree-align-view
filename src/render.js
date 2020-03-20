@@ -23,7 +23,8 @@ const { render } = (() => {
          '.tav-show span, span.tav-show { display: inline; }',
          '.tav-show img, img.tav-show { display: none; }',
          '.tav-anim span, span.tav-anim { display: none; }',
-         '.tav-anim img, img.tav-anim { display: inline; }'
+         '.tav-anim img, img.tav-anim { display: inline; }',
+         '.tav-rows .tav-show span:hover { border-style: solid; border-color: black; border-width: 1px; margin: -1px; }'
         ].join(' ')
     }
 
@@ -131,8 +132,7 @@ const { render } = (() => {
       treeHeight += rh
     })
     treeHeight += scrollbarHeight
-    containerHeight = containerHeight || (treeHeight + 'px')
-    return { nx, ny, rowHeight, containerHeight, treeHeight }
+    return { nx, ny, rowHeight, treeHeight }
   }
 
   // get metrics and other info about alignment font/chars
@@ -235,20 +235,33 @@ const { render } = (() => {
   // create tree-alignment container DIVs
   let globalInstanceCount = 0   // so we can have multiple instances on a page, without CSS conflicts
   const createContainer = (opts) => {
-    const { parent, dom, containerWidth, containerHeight, treeWidth, treeHeight, alignSummary } = opts
+    const { parent, dom, containerWidth, containerHeight, treeAlignHeight, structureConfig, treeWidth, treeHeight, alignSummary } = opts
     if (!dom.colStyle)
       dom.colStyle = addStylesToDocument (alignSummary.columns)
     if (!dom.instanceClass)
       dom.instanceClass = 'tav-' + (++globalInstanceCount)
     let container = dom.container || create ('div', opts.parent,
                                              { display: 'flex',
-                                               'flex-direction': 'row',
+                                               'flex-direction': 'column',
                                                width: containerWidth,
                                                height: containerHeight,
                                                'overflow-y': 'auto' },
                                              { class: dom.instanceClass })
-    let treeDiv = dom.treeDiv || create ('div', container)
-    let alignDiv = dom.alignDiv || create ('div', container)
+    
+    let treeAlignDiv = dom.treeAlignDiv || create ('div', container,
+                                                   { display: 'flex',
+                                                     'flex-direction': 'row',
+                                                     width: containerWidth,
+                                                     'min-height': treeAlignHeight,
+                                                     'overflow-y': 'auto' })
+    let treeDiv = dom.treeDiv || create ('div', treeAlignDiv)
+    let alignDiv = dom.alignDiv || create ('div', treeAlignDiv)
+
+    let structuresDiv = dom.structuresDiv || create ('div', container,
+                                                   { display: 'flex',
+                                                     'flex-direction': 'row',
+                                                     width: containerWidth,
+                                                     height: structureConfig.height })
 
     setStyle (treeDiv, { width: treeWidth + 'px',
                          height: treeHeight + 'px' })
@@ -258,18 +271,18 @@ const { render } = (() => {
                           overflow: 'hidden',
                           height: treeHeight + 'px' })
 
-    return { container, treeDiv, alignDiv }
+    return { container, treeAlignDiv, structuresDiv, treeDiv, alignDiv }
   }
 
   // build (structure-linked) span for a name
   const buildNameSpan = (opts) => {
-    const { name, nameFont, nameFontColor, nameDiv, structure, structureConfig } = opts
+    const { name, nameFont, nameFontColor, nameDiv, structure, structureConfig, structureState, structuresDiv } = opts
     let nameSpan = create ('span', nameDiv)
     if (structure) {
       let nameAnchor = create ('a', nameSpan, null, { href: '#' })
       nameAnchor.addEventListener ('click', (evt) => {
         evt.preventDefault()
-        loadStructure ({ node: name, structure, structureConfig })
+        loadStructure ({ node: name, structure, structureConfig, structureState, structuresDiv })
       })
       nameAnchor.innerText = name
     } else
@@ -299,7 +312,7 @@ const { render } = (() => {
 
   // build span for an alignment char
   const buildAlignCharSpan = (opts) => {
-    const { alignMetrics, className, color, c, handler, coords, rowDiv, genericRowHeight } = opts
+    const { alignMetrics, className, color, c, handler, structureHandler, coords, rowDiv, genericRowHeight } = opts
     const charMetrics = alignMetrics.charMetrics[c]
     const col = getColor (c, color)
     let charSpan = create ('span', rowDiv,
@@ -308,10 +321,14 @@ const { render } = (() => {
                              width: alignMetrics.charWidth },
                            { class: className })
     charSpan.innerText = c
-    if (handler.alignClick)
-      charSpan.addEventListener ('click', (evt) => handler.alignClick (coords))
-    if (handler.alignMouseover)
-      charSpan.addEventListener ('mouseover', (evt) => handler.alignMouseover (coords))
+    Array.from ([structureHandler, handler]).forEach ((h) => {
+      if (h.alignClick)
+        charSpan.addEventListener ('click', (evt) => h.alignClick (coords))
+      if (h.alignMouseover)
+        charSpan.addEventListener ('mouseover', (evt) => h.alignMouseover (coords))
+      if (h.alignMouseout)
+        charSpan.addEventListener ('mouseout', (evt) => h.alignMouseout (coords))
+    })
     return charSpan
   }
 
@@ -326,13 +343,14 @@ const { render } = (() => {
   
   // create alignment
   const buildAlignment = (opts) => {
-    const { rowData, structure, structureConfig, handler, fontConfig, alignConfig, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state } = opts
+    const { rowData, structure, structureConfig, structureState, handler, fontConfig, alignConfig, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state } = opts
     const { nameFont, nameFontSize, nameFontColor, charFont, charFontName } = fontConfig
     const { rowWidth } = alignMetrics
     const { genericRowHeight, maxNameImageWidth } = alignConfig
+    const { alignDiv, structuresDiv } = dom
     
     if (!dom.namesDiv) {   // first build?
-      dom.namesDiv = create ('div', dom.alignDiv,
+      dom.namesDiv = create ('div', alignDiv,
                              { 'font-size': nameFontSize + 'px',
                                'margin-left': '2px',
                                'margin-right': '2px',
@@ -342,7 +360,7 @@ const { render } = (() => {
                                'flex-shrink': 0,
                                'white-space': 'nowrap' })
       
-      dom.rowsDiv = create ('div', dom.alignDiv,
+      dom.rowsDiv = create ('div', alignDiv,
                             { 'font-family': charFontName,
                               'font-size': alignConfig.genericRowHeight + 'px',
                               'overflow-x': 'scroll',
@@ -360,6 +378,7 @@ const { render } = (() => {
       let nameDivList = [], nameSpanList = [], nameImageList = [], rowDivList = [], rowSpanList = [], rowImageList = []
       let colSpanList = new Array (alignSummary.columns).fill ([])
       let colImageList = new Array (alignSummary.columns).fill ([])
+      const structureHandler = makeStructureHandler ({ structureState, alignSummary, rowData })
       treeSummary.nodes.forEach ((node, row) => {
 
         const colToSeqPos = alignSummary.alignColToSeqPos[node]
@@ -375,7 +394,7 @@ const { render } = (() => {
 
         nameDivList.push (nameDiv)
         
-        nameSpanList.push (buildNameSpan ({ name: node, structure: structure[node], structureConfig, nameFont, nameFontColor, nameDiv }))
+        nameSpanList.push (buildNameSpan ({ name: node, structure: structure[node], structureConfig, structureState, structuresDiv, nameFont, nameFontColor, nameDiv }))
         nameImageList.push (buildNameImage ({ name: node, nameFont, nameFontColor, nameFontSize, nameDiv, nameDivWidth, genericRowHeight, maxNameImageWidth }))
         
         let rowDiv = create ('div', dom.rowsDiv,
@@ -395,7 +414,7 @@ const { render } = (() => {
                              isGap: isGapChar(c) }
 
             const className = 'tav-col-' + col
-            const span = buildAlignCharSpan ({ alignMetrics, className, color: fontConfig.color, c, handler, coords, rowDiv, genericRowHeight })
+            const span = buildAlignCharSpan ({ alignMetrics, className, color: fontConfig.color, c, handler, structureHandler, coords, rowDiv, genericRowHeight })
             const img = buildAlignCharImage ({ alignMetrics, className, c, rowDiv, genericRowHeight })
             colSpanList[col].push (span)
             colImageList[col].push (img)
@@ -477,6 +496,49 @@ const { render } = (() => {
                   : { display: 'none' })
     return makeStyle (styles)
   }
+
+  // create structure mouseover/click handlers
+  const defaultPdbChain = 'A'
+  const makeStructureHandler = (opts) => {
+    const { structureState, alignSummary, rowData } = opts
+    const alignMouseover = (coords) => {
+      structureState.openStructures.forEach ((s) => {
+        if (rowData[s.node] && !isGapChar(rowData[s.node][coords.column])) {
+          const colToSeqPos = alignSummary.alignColToSeqPos[s.node]
+          if (colToSeqPos) {
+            const seqPos = colToSeqPos[coords.column]
+            const pdbSeqPos = seqPos + (typeof(s.structure.startPos) === 'undefined' ? 1 : s.structure.startPos)
+            const pdbChain = s.structure.chain
+            const residues = s.pdb.residueSelect ((res) => {
+              return res.num() == pdbSeqPos
+                && (typeof(pdbChain) === 'undefined' || res.chain().name() == pdbChain)
+            })
+            if (residues) {
+              const labelConfig = s.structure.labelConfig || { fontSize : 16,
+                                                               fontColor: '#f22',
+                                                               backgroundAlpha : 0.4 }
+              if (s.hasMouseoverLabel)
+                s.viewer.rm ('mouseover')
+              residues.eachResidue ((res) => {
+                s.viewer.label ('mouseover', res.qualifiedName(), res.centralAtom().pos(), labelConfig)
+              })
+              s.hasMouseoverLabel = true
+            }
+          }
+        }
+      })
+    }
+    const alignMouseout = (coords) => {
+      structureState.openStructures.forEach ((s) => {
+        if (s.hasMouseoverLabel) {
+          s.viewer.rm ('mouseover')
+          s.viewer.requestRedraw()
+          delete s.hasMouseoverLabel
+        }
+      })
+    }
+    return { alignMouseover, alignMouseout }
+  }
   
   // create node-toggle handler
   const makeNodeClickHandler = (opts) => {
@@ -542,41 +604,44 @@ const { render } = (() => {
   
   // attach node-toggle handler
   const attachNodeToggleHandlers = (opts) => {
-    const { container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed } = opts
+    const { treeAlignDiv, nodeClicked, treeCanvas, treeLayout, nodesWithHandles, nodeHandleClickRadius, collapsed } = opts
     const canvasRect = treeCanvas.getBoundingClientRect(),
-          canvasOffset = { top: canvasRect.top + container.scrollTop + document.body.scrollTop,  // who knows why we need to include container.scrollTop here? not me. or 1 hour of my life
+          canvasOffset = { top: canvasRect.top + treeAlignDiv.scrollTop + document.body.scrollTop,  // this sort of thing absolutely terrifies me
                            left: canvasRect.left + document.body.scrollLeft }
     treeCanvas.addEventListener ('click', (evt) => {
       evt.preventDefault()
       const mouseX = parseInt (evt.clientX - canvasOffset.left)
-      const mouseY = parseInt (evt.clientY - canvasOffset.top + container.scrollTop)
-      let clickedNode = null
+      const mouseY = parseInt (evt.clientY - canvasOffset.top + treeAlignDiv.scrollTop + document.body.scrollTop)
+//      console.warn ('evt.clientY', evt.clientY, 'canvasRect.top',canvasRect.top, 'treeAlignDiv.scrollTop',treeAlignDiv.scrollTop, 'document.body.scrollTop',document.body.scrollTop)
       let ctx = treeCanvas.getContext('2d')
+      let closestNode, closestNodeDistSquared
       nodesWithHandles.forEach ((node) => {
-        makeNodeHandlePath (node)
-        if (ctx.isPointInPath (mouseX, mouseY))
-          clickedNode = node
+        const distSquared = Math.pow (mouseX - treeLayout.nx[node], 2) + Math.pow (mouseY - treeLayout.ny[node], 2)
+        if (typeof(closestNodeDistSquared) === 'undefined' || distSquared < closestNodeDistSquared) {
+          closestNodeDistSquared = distSquared
+          closestNode = node
+        }
       })
-      if (clickedNode)
-        nodeClicked (clickedNode)
+      if (closestNode && closestNodeDistSquared <= Math.pow(nodeHandleClickRadius,2))
+        nodeClicked (closestNode)
     })
   }
 
   // set scroll state
   const setScrollState = (opts) => {
     const { dom, state } = opts
-    const { container, rowsDiv } = dom
+    const { treeAlignDiv, rowsDiv } = dom
     const { scrollLeft, scrollTop } = state
     if (typeof(scrollLeft) !== 'undefined')
       rowsDiv.scrollLeft = scrollLeft
     if (typeof(scrollTop) !== 'undefined')
-      container.scrollTop = scrollTop
+      treeAlignDiv.scrollTop = scrollTop
   }
   
   // attach drag handlers
   const attachDragHandlers = (opts) => {
     const { dom, state } = opts
-    const { container, rowsDiv } = dom
+    const { treeAlignDiv, rowsDiv } = dom
     let { scrollLeft, scrollTop } = state
 
     let startX, rowsDivMouseDown;
@@ -608,36 +673,52 @@ const { render } = (() => {
     })
 
     let startY, containerMouseDown;
-    container.addEventListener("mousedown", e => {
+    treeAlignDiv.addEventListener("mousedown", e => {
       containerMouseDown = true;
-      container.classList.add("active");
-      startY = e.pageY - container.offsetTop;
-      scrollTop = container.scrollTop;
+      treeAlignDiv.classList.add("active");
+      startY = e.pageY - treeAlignDiv.offsetTop;
+      scrollTop = treeAlignDiv.scrollTop;
     });
-    container.addEventListener("mouseleave", () => {
+    treeAlignDiv.addEventListener("mouseleave", () => {
       containerMouseDown = false;
-      container.classList.remove("active");
+      treeAlignDiv.classList.remove("active");
     });
-    container.addEventListener("mouseup", () => {
+    treeAlignDiv.addEventListener("mouseup", () => {
       containerMouseDown = false;
-      container.classList.remove("active");
+      treeAlignDiv.classList.remove("active");
     });
-    container.addEventListener("mousemove", e => {
+    treeAlignDiv.addEventListener("mousemove", e => {
       if (!containerMouseDown) return;
       e.preventDefault();
-      const y = e.pageY - container.offsetTop;
+      const y = e.pageY - treeAlignDiv.offsetTop;
       const walk = y - startY;
-      state.scrollTop = container.scrollTop = scrollTop - walk;
+      state.scrollTop = treeAlignDiv.scrollTop = scrollTop - walk;
     });
-    container.addEventListener("scroll", e => {
-      state.scrollTop = container.scrollTop
+    treeAlignDiv.addEventListener("scroll", e => {
+      state.scrollTop = treeAlignDiv.scrollTop
     })
   }
 
   // load a PDB structure
   const loadStructure = (opts) => {
-    const { node, structure, structureConfig } = opts
-    console.warn ('loading', node, structure)
+    const { node, structure, structureConfig, structureState, structuresDiv } = opts
+    const { width, height } = structureConfig
+    const pv = structureConfig.pv || window.pv
+    const pvDiv = create ('div', structuresDiv,
+                          { width, height })
+    const pvConfig = structureConfig.pvConfig
+          || { width,
+               height,
+               antialias: true,
+               quality : 'medium' }
+    const viewer = pv.Viewer (pvDiv, pvConfig)
+    pv.io.fetchPdb (structure.path, (pdb) => {
+      // display the protein as cartoon, coloring the secondary structure
+      // elements in a rainbow gradient.
+      viewer.cartoon('protein', pdb, { color : color.ssSuccession() })
+      viewer.centerOn(pdb)
+      structureState.openStructures.push ({ node, structure, pdb, viewer })
+    })
   }
   
   // create DOM element
@@ -710,21 +791,25 @@ const { render } = (() => {
     const columnScale = state.columnScale = state.columnScale || {}
     const disableTreeEvents = state.disableTreeEvents
     const prevState = state.prevState = state.prevState || { nodeVisible: {}, columnVisible: {}, nodeScale: {}, columnScale: {} }
+    const structureState = state.structure = state.structure || { openStructures: [] }
 
     // TODO: refactor default config into a single extend(defaultConfig,config)
     const parent = config.parent
+    const treeAlignHeight = config.treeAlignHeight || 400
     const genericRowHeight = config.genericRowHeight || 24
     const nameFontSize = config.nameFontSize || 12
-    const containerWidth = config.width || ''
+    const containerHeight = config.height || '100%'
+    const containerWidth = config.width || '100%'
     const treeWidth = config.treeWidth || 200
     const nameDivWidth = config.nameDivWidth || 200
     const branchStrokeStyle = config.branchStrokeStyle || 'black'
     const nodeHandleStrokeStyle = branchStrokeStyle
     const nodeHandleRadius = config.nodeHandleRadius || 4
+    const nodeHandleClickRadius = config.nodeHandleClickRadius || 4*nodeHandleRadius
     const nodeHandleFillStyle = config.nodeHandleFillStyle || 'white'
     const collapsedNodeHandleFillStyle = config.collapsedNodeHandleFillStyle || 'black'
     const rowConnectorDash = config.rowConnectorDash || [2,2]
-    const structureConfig = config.structure || {}
+    const structureConfig = config.structure || { width: 300, height: 300 }
     
     const handler = config.handler || {}
     const color = config.color || colorScheme[config.colorScheme || defaultColorScheme]
@@ -752,22 +837,22 @@ const { render } = (() => {
     // get tree layout
     const { ancestorCollapsed, nodeVisible, columnVisible } = getNodeVisibility ({ treeSummary, alignSummary, collapsed, forceDisplayNode, rowData })
     const treeAlignState = { collapsed, ancestorCollapsed, forceDisplayNode, nodeVisible, columnVisible, nodeScale, columnScale, prevState }
-    const treeLayout = layoutTree ({ treeAlignState, treeConfig, treeSummary, containerHeight: config.height || null })
-    const { nx, ny, rowHeight, treeHeight, containerHeight } = treeLayout
+    const treeLayout = layoutTree ({ treeAlignState, treeConfig, treeSummary, containerHeight })
+    const { nx, ny, rowHeight, treeHeight } = treeLayout
 
     // get alignment metrics
     const alignMetrics = summary.alignMetrics = summary.alignMetrics || getAlignMetrics ({ treeSummary, alignSummary, genericRowHeight, charFont, color })
     const { rowWidth, charDescent, charWidth, charHeight } = alignMetrics
     
     // create the tree & alignment container DIVs
-    let { container, treeDiv, alignDiv } = createContainer ({ parent, dom, containerWidth, containerHeight, treeWidth, treeHeight, alignSummary })
-    extend (dom, { container, treeDiv, alignDiv })
+    let { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv } = createContainer ({ parent, dom, containerWidth, containerHeight, treeAlignHeight, treeWidth, treeHeight, structureConfig, alignSummary })
+    extend (dom, { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv })
 
     // render the tree
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, treeAlignState, treeConfig, treeDiv })
 
     // build the alignment
-    let { namesDiv, rowsDiv, rowDivList, rebuilt } = buildAlignment ({ rowData, dom, structure, structureConfig, handler, fontConfig, alignConfig, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
+    let { namesDiv, rowsDiv, rowDivList, rebuilt } = buildAlignment ({ rowData, dom, structure, structureConfig, structureState, handler, fontConfig, alignConfig, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
     extend (dom, { namesDiv, rowsDiv, rowDivList })
 
     // style the alignment
@@ -779,7 +864,7 @@ const { render } = (() => {
     // attach event handlers
     if (!disableTreeEvents) {
       const nodeClicked = makeNodeClickHandler ({ treeSummary, alignSummary, rowData, handler, treeAlignState, renderOpts: opts })
-      attachNodeToggleHandlers ({ container, nodeClicked, treeCanvas, nodesWithHandles, makeNodeHandlePath, collapsed })
+      attachNodeToggleHandlers ({ treeAlignDiv, nodeClicked, treeCanvas, nodesWithHandles, treeLayout, nodeHandleClickRadius, collapsed })
     }
     
     return { element: container }
