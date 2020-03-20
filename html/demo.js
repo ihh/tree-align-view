@@ -116,6 +116,9 @@ let opts = {
       },
       alignMouseover: (coords) => {
         console.warn ('Mouseover ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
+      },
+      alignMouseout: (coords) => {
+        console.warn ('Mouseout ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
       }
     },
     parent: mainDiv

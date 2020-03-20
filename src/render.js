@@ -244,8 +244,7 @@ const { render } = (() => {
                                              { display: 'flex',
                                                'flex-direction': 'column',
                                                width: containerWidth,
-                                               height: containerHeight,
-                                               'overflow-y': 'auto' },
+                                               height: containerHeight },
                                              { class: dom.instanceClass })
     
     let treeAlignDiv = dom.treeAlignDiv || create ('div', container,
@@ -253,7 +252,10 @@ const { render } = (() => {
                                                      'flex-direction': 'row',
                                                      width: containerWidth,
                                                      'min-height': treeAlignHeight,
-                                                     'overflow-y': 'auto' })
+                                                     'overflow-y': 'auto',
+                                                     'border-style': 'solid',
+                                                     'border-color': 'black',
+                                                     'border-width': '1px' })
     let treeDiv = dom.treeDiv || create ('div', treeAlignDiv)
     let alignDiv = dom.alignDiv || create ('div', treeAlignDiv)
 
@@ -312,7 +314,7 @@ const { render } = (() => {
 
   // build span for an alignment char
   const buildAlignCharSpan = (opts) => {
-    const { alignMetrics, className, color, c, handler, structureHandler, coords, rowDiv, genericRowHeight } = opts
+    const { alignMetrics, className, color, c, handler, structureHandler, coords, rowDiv, genericRowHeight, dom } = opts
     const charMetrics = alignMetrics.charMetrics[c]
     const col = getColor (c, color)
     let charSpan = create ('span', rowDiv,
@@ -321,13 +323,25 @@ const { render } = (() => {
                              width: alignMetrics.charWidth },
                            { class: className })
     charSpan.innerText = c
-    Array.from ([structureHandler, handler]).forEach ((h) => {
-      if (h.alignClick)
-        charSpan.addEventListener ('click', (evt) => h.alignClick (coords))
-      if (h.alignMouseover)
-        charSpan.addEventListener ('mouseover', (evt) => h.alignMouseover (coords))
-      if (h.alignMouseout)
-        charSpan.addEventListener ('mouseout', (evt) => h.alignMouseout (coords))
+    const handlers = [structureHandler, handler]
+    charSpan.addEventListener ('click', (evt) => {
+      if (dom.panning || dom.scrolling)
+        dom.panning = dom.scrolling = false
+      else
+        handlers.filter ((h) => h.alignClick).forEach ((h) => h.alignClick (coords))
+    })
+    const handlerInfo = { mouseover: { name: 'alignMouseover' },
+                          mouseout: { name: 'alignMouseout' } }
+    Object.keys(handlerInfo).forEach ((evtType) => {
+      const info = handlerInfo[evtType]
+      const typeHandlers = handlers.filter ((h) => h[info.name])
+      if (typeHandlers.length)
+        charSpan.addEventListener (evtType, (evt) => {
+          typeHandlers.forEach ((h) => {
+            if (!dom.panning && !dom.scrolling)
+              h[info.name] (coords)
+          })
+        })
     })
     return charSpan
   }
@@ -369,6 +383,7 @@ const { render } = (() => {
                               '-moz-user-select': 'none',
                               '-webkit-user-select': 'none',
                               '-ms-user-select': 'none',
+                              padding: '1px',
                               cursor: 'move' },
                             { class: 'tav-rows' })
 
@@ -378,7 +393,7 @@ const { render } = (() => {
       let nameDivList = [], nameSpanList = [], nameImageList = [], rowDivList = [], rowSpanList = [], rowImageList = []
       let colSpanList = new Array (alignSummary.columns).fill ([])
       let colImageList = new Array (alignSummary.columns).fill ([])
-      const structureHandler = makeStructureHandler ({ structureState, alignSummary, rowData })
+      const structureHandler = makeStructureHandler ({ structureState, alignSummary, rowData, dom })
       treeSummary.nodes.forEach ((node, row) => {
 
         const colToSeqPos = alignSummary.alignColToSeqPos[node]
@@ -414,7 +429,7 @@ const { render } = (() => {
                              isGap: isGapChar(c) }
 
             const className = 'tav-col-' + col
-            const span = buildAlignCharSpan ({ alignMetrics, className, color: fontConfig.color, c, handler, structureHandler, coords, rowDiv, genericRowHeight })
+            const span = buildAlignCharSpan ({ alignMetrics, className, color: fontConfig.color, c, handler, structureHandler, coords, rowDiv, genericRowHeight, dom })
             const img = buildAlignCharImage ({ alignMetrics, className, c, rowDiv, genericRowHeight })
             colSpanList[col].push (span)
             colImageList[col].push (img)
@@ -499,45 +514,72 @@ const { render } = (() => {
 
   // create structure mouseover/click handlers
   const defaultPdbChain = 'A'
+  const mouseoverLabelDelay = 100
   const makeStructureHandler = (opts) => {
-    const { structureState, alignSummary, rowData } = opts
+    const { structureState, alignSummary, rowData, dom } = opts
     const alignMouseover = (coords) => {
-      structureState.openStructures.forEach ((s) => {
-        if (rowData[s.node] && !isGapChar(rowData[s.node][coords.column])) {
-          const colToSeqPos = alignSummary.alignColToSeqPos[s.node]
-          if (colToSeqPos) {
-            const seqPos = colToSeqPos[coords.column]
-            const pdbSeqPos = seqPos + (typeof(s.structure.startPos) === 'undefined' ? 1 : s.structure.startPos)
-            const pdbChain = s.structure.chain
-            const residues = s.pdb.residueSelect ((res) => {
-              return res.num() == pdbSeqPos
-                && (typeof(pdbChain) === 'undefined' || res.chain().name() == pdbChain)
-            })
-            if (residues) {
-              const labelConfig = s.structure.labelConfig || { fontSize : 16,
-                                                               fontColor: '#f22',
-                                                               backgroundAlpha : 0.4 }
-              if (s.hasMouseoverLabel)
-                s.viewer.rm ('mouseover')
-              residues.eachResidue ((res) => {
-                s.viewer.label ('mouseover', res.qualifiedName(), res.centralAtom().pos(), labelConfig)
+      setTimer (structureState, 'mouseover', mouseoverLabelDelay, () => {
+        structureState.openStructures.forEach ((s) => {
+          if (rowData[s.node] && !isGapChar(rowData[s.node][coords.column]) && s.viewer) {
+            const colToSeqPos = alignSummary.alignColToSeqPos[s.node]
+            if (colToSeqPos) {
+              const seqPos = colToSeqPos[coords.column]
+              const pdbSeqPos = seqPos + (typeof(s.structure.startPos) === 'undefined' ? 1 : s.structure.startPos)
+              const pdbChain = s.structure.chain
+              const residues = s.pdb.residueSelect ((res) => {
+                return res.num() == pdbSeqPos
+                  && (typeof(pdbChain) === 'undefined' || res.chain().name() == pdbChain)
               })
-              s.hasMouseoverLabel = true
+              if (residues) {
+                const labelConfig = s.structure.labelConfig || { fontSize : 16,
+                                                                 fontColor: '#f22',
+                                                                 backgroundAlpha : 0.4 }
+                if (s.hasMouseoverLabel)
+                  s.viewer.rm ('mouseover')
+                residues.eachResidue ((res) => {
+                  s.viewer.label ('mouseover', res.qualifiedName(), res.centralAtom().pos(), labelConfig)
+                })
+                s.hasMouseoverLabel = true
+              }
             }
           }
-        }
+        })
       })
     }
     const alignMouseout = (coords) => {
+      clearTimer (structureState, 'mouseover')
       structureState.openStructures.forEach ((s) => {
         if (s.hasMouseoverLabel) {
           s.viewer.rm ('mouseover')
-          s.viewer.requestRedraw()
+          requestRedraw (s)
           delete s.hasMouseoverLabel
         }
       })
     }
     return { alignMouseover, alignMouseout }
+  }
+
+  // generic timer methods
+  const setTimer = (owner, name, delay, callback) => {
+    owner.timer = owner.timer || {}
+    clearTimer (owner, name)
+    owner.timer[name] = window.setTimeout (() => {
+      delete owner.timer[name]
+      callback()
+    }, delay)
+  }
+
+  const clearTimer = (owner, name) => {
+    if (owner.timer && owner.timer[name]) {
+      window.clearTimeout (owner.timer[name])
+      delete owner.timer[name]
+    }
+  }
+  
+  // redraw request
+  const redrawDelay = 500
+  const requestRedraw = (structure) => {
+    setTimer (structure, 'redraw', redrawDelay, () => structure.viewer.requestRedraw())
   }
   
   // create node-toggle handler
@@ -654,7 +696,7 @@ const { render } = (() => {
     rowsDiv.addEventListener("mouseleave", () => {
       rowsDivMouseDown = false;
       rowsDiv.classList.remove("active");
-      dom.wasPanning = false
+      dom.panning = false
     });
     rowsDiv.addEventListener("mouseup", () => {
       rowsDivMouseDown = false;
@@ -666,7 +708,7 @@ const { render } = (() => {
       const x = e.pageX - rowsDiv.offsetLeft;
       const walk = x - startX;
       state.scrollLeft = rowsDiv.scrollLeft = scrollLeft - walk;
-      dom.wasPanning = true  // will be cleared by mouseleave or click
+      dom.panning = true  // will be cleared by mouseleave or click
     });
     rowsDiv.addEventListener("scroll", () => {
       state.scrollLeft = rowsDiv.scrollLeft
@@ -682,6 +724,7 @@ const { render } = (() => {
     treeAlignDiv.addEventListener("mouseleave", () => {
       containerMouseDown = false;
       treeAlignDiv.classList.remove("active");
+      dom.scrolling = false
     });
     treeAlignDiv.addEventListener("mouseup", () => {
       containerMouseDown = false;
@@ -693,6 +736,7 @@ const { render } = (() => {
       const y = e.pageY - treeAlignDiv.offsetTop;
       const walk = y - startY;
       state.scrollTop = treeAlignDiv.scrollTop = scrollTop - walk;
+      dom.scrolling = true  // will be cleared by mouseleave or click
     });
     treeAlignDiv.addEventListener("scroll", e => {
       state.scrollTop = treeAlignDiv.scrollTop
@@ -703,9 +747,39 @@ const { render } = (() => {
   const loadStructure = (opts) => {
     const { node, structure, structureConfig, structureState, structuresDiv } = opts
     const { width, height } = structureConfig
+    const newStructure = { node, structure }
+    structureState.openStructures.push (newStructure)
     const pv = structureConfig.pv || window.pv
     const pvDiv = create ('div', structuresDiv,
-                          { width, height })
+                          { width,
+                            height,
+                            position: 'relative',
+                            'border-style': 'solid',
+                            'border-color': 'black',
+                            'border-width': '1px',
+                            'padding-top': '2px',
+                            margin: '1px' }),
+          pvDivLabel = create ('div', pvDiv,
+                               { position: 'absolute',
+                                 top: '2px',
+                                 left: '2px',
+                                 'font-size': 'small' }),
+          pvDivClose = create ('div', pvDiv,
+                               { position: 'absolute',
+                                 top: '2px',
+                                 right: '2px',
+                                 'font-size': 'small' }),
+          pvDivCloseAnchor = create ('a', pvDivClose,
+                                     null,
+                                     { href: '#' })
+    pvDivLabel.innerText = node
+    pvDivCloseAnchor.innerText = 'close'
+    pvDivCloseAnchor.addEventListener ('click', (evt) => {
+      evt.preventDefault()
+      structureState.openStructures = structureState.openStructures.filter ((s) => s !== newStructure)
+      structuresDiv.removeChild (pvDiv)
+    })
+    
     const pvConfig = structureConfig.pvConfig
           || { width,
                height,
@@ -717,7 +791,8 @@ const { render } = (() => {
       // elements in a rainbow gradient.
       viewer.cartoon('protein', pdb, { color : color.ssSuccession() })
       viewer.centerOn(pdb)
-      structureState.openStructures.push ({ node, structure, pdb, viewer })
+      viewer.autoZoom()
+      extend (newStructure, { pdb, viewer })
     })
   }
   
