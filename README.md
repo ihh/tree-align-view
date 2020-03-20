@@ -11,8 +11,8 @@ Basically something like this:
   let opts = {
     data: {
       stockholm:  /* can also use Fasta, Newick, or JSON */
-	"ATO98157.1/317-568   PNITNLCPFGEVFNATTF...\n"
-      + "Q1T6X6_CVHSA/317-569 PNITNLCPFGEVFNATKF...\n"
+        "U5LNM4_9BETC/366-630 AELT-ECDLDVLFKN-DA...\n"
+      + "SPIKE_CVHN5/322-526  PNLP-DCDIDNWLNNVSV...\n"
       + "SPIKE_CVHSA/317-569  PNITNLCPFGEVFNATKF...\n",
       structure: {
         "SPIKE_CVHSA/317-569": {
