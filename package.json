@@ -1,0 +1,21 @@
+{
+  "name": "tree-align-view",
+  "version": "1.0.0",
+  "description": "Phylogenetic alignment and structure viewer",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ihh/tree-align-view.git"
+  },
+  "author": "Ian Holmes <ihholmes@gmail.com>",
+  "license": "(MIT OR BSD-3-Clause)",
+  "bugs": {
+    "url": "https://github.com/ihh/tree-align-view/issues"
+  },
+  "homepage": "https://github.com/ihh/tree-align-view#readme",
+  "dependencies": {
+    "stockholm-js": "^1.0.4"
+  },
+  "devDependencies": {}
+}

@@ -1,3 +1,7 @@
+if (!(window && window.document)) {
+  Stockholm = require ('stockholm-js')
+}
+
 const { render } = (() => {
 
   // colors
@@ -632,7 +636,7 @@ const { render } = (() => {
             const currentTime = Date.now(),
                   timeSinceLastFrame = currentTime - lastFrameTime,
                   timeToNextFrame = Math.max (0, expectedTimeBetweenFrames - timeSinceLastFrame),
-                  frameSkip = Math.min (collapseAnimationMaxFrameSkip, Math.floor (timeSinceLastFrame / expectedTimeBetweenFrames))
+                  frameSkip = Math.min (collapseAnimationMaxFrameSkip, Math.ceil (timeSinceLastFrame / expectedTimeBetweenFrames))
             framesLeft = Math.max (0, framesLeft - frameSkip)
             lastFrameTime = currentTime
             setTimeout (drawAnimationFrame, timeToNextFrame)
@@ -749,7 +753,8 @@ const { render } = (() => {
     const { width, height } = structureConfig
     const newStructure = { node, structure }
     structureState.openStructures.push (newStructure)
-    const pv = structureConfig.pv || window.pv
+    // required modules are passed in as globals
+    pv = structureConfig.pv || pv
     const pvDiv = create ('div', structuresDiv,
                           { width,
                             height,
@@ -845,6 +850,75 @@ const { render } = (() => {
     Object.keys(b).forEach ((k) => a[k] = b[k])
     return a
   }
+
+  // method to get data & build tree if necessary
+  const getData = (data, config) => {
+    if (!(data.root && data.branches && data.rowData)) {
+      let newickStr = data.newick
+      if (data.stockholm) {
+        // required modules are passed in as globals
+        Stockholm = config.Stockholm || Stockholm
+        const stock = Stockholm.parse (data.stockholm)
+        data.rowData = stock.seqdata
+        if (stock.gf.NH && !newickStr)
+          newickStr = stock.gf.NH.join('')
+      } else if (data.fasta)
+        data.rowData = parseFasta (data.fasta)
+      else
+        throw new Error ("no sequence data")
+      if (newickStr) {
+        // required modules are passed in as globals
+        Newick = config.Newick || Newick
+        const newickTree = Newick.parse (newickStr)
+        let nodes = 0
+        const getName = (obj) => (obj.name = obj.name || ('node' + (++nodes)))
+        data.branches = []
+        const traverse = (parent) => {
+          if (parent.branchset)
+            parent.branchset.forEach ((child) => {
+              data.branches.push ([getName(parent), getName(child), Math.max (child.length, 0)])
+              traverse (child)
+            })
+        }
+        traverse (newickTree)
+        data.root = getName (newickTree)
+      } else {
+        // required modules are passed in as globals
+        JukesCantor = config.JukesCantor || JukesCantor
+        RapidNeighborJoining = config.RapidNeighborJoining || RapidNeighborJoining
+        const taxa = Object.keys(data.rowData).sort(), seqs = taxa.map ((taxon) => data.rowData[taxon])
+        const distMatrix = JukesCantor.calcDistanceMatrix (seqs)
+        const rnj = new RapidNeighborJoining.RapidNeighborJoining (distMatrix, taxa.map ((name) => ({ name })))
+        rnj.run()
+        const tree = rnj.getAsObject()
+        let nodes = 0
+        const getName = (obj) => { obj.taxon = obj.taxon || { name: 'node' + (++nodes) }; return obj.taxon.name }
+        data.branches = []
+        const traverse = (parent) => {
+          parent.children.forEach ((child) => {
+            data.branches.push ([getName(parent), getName(child), Math.max (child.length, 0)])
+            traverse (child)
+          })
+        }
+        traverse (tree)
+        data.root = getName (tree)
+      }
+    }
+    return data
+  }
+
+  // method to parse FASTA (simple enough to build in here)
+  const parseFasta = (fasta) => {
+    let seq = {}, name, re = /^>(\S+)/;
+    fasta.split("\n").forEach ((line) => {
+      const match = re.exec(line)
+      if (match)
+        seq[name = match[1]] = ''
+      else if (name)
+        seq[name] = seq[name] + line.replace(/[ \t]/g,'')
+    })
+    return seq
+  }
   
   // main entry point
   const render = (opts) => {
@@ -857,7 +931,7 @@ const { render } = (() => {
     const state = opts.state = opts.state || {}
     const dom = opts.dom = opts.dom || {}
 
-    const { root, branches, rowData } = data  // mandatory arguments
+    const { root, branches, rowData } = getData (data, config)
     const structure = data.structure || {}
 
     const collapsed = state.collapsed = state.collapsed || {}
