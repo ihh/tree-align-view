@@ -127,4 +127,5 @@ window.onload = () => {
   }
 
   render (opts)
+  document.getElementById('loading').innerText = ''
 }
