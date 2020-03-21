@@ -1,6 +1,6 @@
 {
   "name": "tree-align-view",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Phylogenetic alignment and structure viewer",
   "main": "src/render.js",
   "files": [
