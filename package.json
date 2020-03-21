@@ -1,8 +1,14 @@
 {
   "name": "tree-align-view",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Phylogenetic alignment and structure viewer",
   "main": "src/render.js",
+  "files": [
+    "src/*",
+    "html/*",
+    "index.html",
+    "dist/tree-align-view.js"
+  ],
   "scripts": {
     "build": "./node_modules/.bin/browserify src/browserify.js >dist/tree-align-view.js",
     "prepublish": "npm run build"
