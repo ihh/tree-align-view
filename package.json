@@ -2,8 +2,11 @@
   "name": "tree-align-view",
   "version": "1.0.0",
   "description": "Phylogenetic alignment and structure viewer",
-  "main": "index.js",
-  "scripts": {},
+  "main": "src/render.js",
+  "scripts": {
+    "build": "./node_modules/.bin/browserify src/browserify.js >dist/tree-align-view.js",
+    "prepublish": "npm run build"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ihh/tree-align-view.git"
@@ -19,7 +22,9 @@
     "jukes-cantor": "^1.0.1",
     "neighbor-joining": "^1.0.4",
     "newick-js": "^1.1.1",
-    "stockholm-js": "^1.0.4"
+    "stockholm-js": "^1.0.5"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "browserify": "^16.5.0"
+  }
 }

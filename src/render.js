@@ -1,6 +1,8 @@
-if (!(window && window.document)) {
-  Stockholm = require ('stockholm-js')
-}
+const Stockholm = require ('stockholm-js'),
+      Newick = require ('newick-js'),
+      JukesCantor = require ('jukes-cantor'),
+      RapidNeighborJoining = require ('neighbor-joining'),
+      pv = require('bio-pv')
 
 const { render } = (() => {
 
@@ -753,8 +755,6 @@ const { render } = (() => {
     const { width, height } = structureConfig
     const newStructure = { node, structure }
     structureState.openStructures.push (newStructure)
-    // required modules are passed in as globals
-    pv = structureConfig.pv || pv
     const pvDiv = create ('div', structuresDiv,
                           { width,
                             height,
@@ -794,7 +794,7 @@ const { render } = (() => {
     pv.io.fetchPdb (structure.path, (pdb) => {
       // display the protein as cartoon, coloring the secondary structure
       // elements in a rainbow gradient.
-      viewer.cartoon('protein', pdb, { color : color.ssSuccession() })
+      viewer.cartoon('protein', pdb, { color : pv.color.ssSuccession() })
       viewer.centerOn(pdb)
       viewer.autoZoom()
       extend (newStructure, { pdb, viewer })
@@ -856,8 +856,6 @@ const { render } = (() => {
     if (!(data.root && data.branches && data.rowData)) {
       let newickStr = data.newick
       if (data.stockholm) {
-        // required modules are passed in as globals
-        Stockholm = config.Stockholm || Stockholm
         const stock = Stockholm.parse (data.stockholm)
         data.rowData = stock.seqdata
         if (stock.gf.NH && !newickStr)
@@ -867,8 +865,6 @@ const { render } = (() => {
       else
         throw new Error ("no sequence data")
       if (newickStr) {
-        // required modules are passed in as globals
-        Newick = config.Newick || Newick
         const newickTree = Newick.parse (newickStr)
         let nodes = 0
         const getName = (obj) => (obj.name = obj.name || ('node' + (++nodes)))
@@ -883,9 +879,6 @@ const { render } = (() => {
         traverse (newickTree)
         data.root = getName (newickTree)
       } else {
-        // required modules are passed in as globals
-        JukesCantor = config.JukesCantor || JukesCantor
-        RapidNeighborJoining = config.RapidNeighborJoining || RapidNeighborJoining
         const taxa = Object.keys(data.rowData).sort(), seqs = taxa.map ((taxon) => data.rowData[taxon])
         const distMatrix = JukesCantor.calcDistanceMatrix (seqs)
         const rnj = new RapidNeighborJoining.RapidNeighborJoining (distMatrix, taxa.map ((name) => ({ name })))
@@ -1023,4 +1016,4 @@ const { render } = (() => {
 })()
 
 if (typeof(module) !== 'undefined')
-  module.exports = render
+  module.exports = { render }

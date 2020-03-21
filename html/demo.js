@@ -126,6 +126,6 @@ window.onload = () => {
     }
   }
 
-  render (opts)
+  TreeAlignView.render (opts)
   document.getElementById('loading').innerText = ''
 }
