@@ -10524,7 +10524,7 @@ exports.write = write;
 module.exports = require('./src/Stockholm')
 
 },{"./src/Stockholm":12}],12:[function(require,module,exports){
-let Stockholm = function() {
+const Stockholm = function() {
   let obj = { gf: {},  // gf[tag] = ARRAY
               gc: {},  // gc[tag] = STRING
               gs: {},  // gs[tag][seqname] = ARRAY
@@ -10597,14 +10597,14 @@ const parseAll = (text, opts) => {
       stock.gc[match[1]] += match[2];
     } else if (match = gsRegex.exec(line)) {
       makeStock();
-      stock.gs[match[1]] = stock.gs[match[1]] || {};
-      stock.gs[match[1]][match[2]] = stock.gs[match[1]][match[2]] || [];
-      stock.gs[match[1]][match[2]].push (match[3]);
+      stock.gs[match[2]] = stock.gs[match[2]] || {};
+      stock.gs[match[2]][match[1]] = stock.gs[match[2]][match[1]] || [];
+      stock.gs[match[2]][match[1]].push (match[3]);
     } else if (match = grRegex.exec(line)) {
       makeStock();
-      stock.gr[match[1]] = stock.gr[match[1]] || {};
-      stock.gr[match[1]][match[2]] = stock.gr[match[1]][match[2]] || '';
-      stock.gr[match[1]][match[2]] += match[3];
+      stock.gr[match[2]] = stock.gr[match[2]] || {};
+      stock.gr[match[2]][match[1]] = stock.gr[match[2]][match[1]] || '';
+      stock.gr[match[2]][match[1]] += match[3];
     } else if (match = lineRegex.exec(line)) {
       makeStock();
       if (!stock.seqdata[match[1]]) {
@@ -11877,7 +11877,7 @@ const { render } = (() => {
   
   // create alignment
   const buildAlignment = (opts) => {
-    const { rowData, structure, structureConfig, structureState, handler, fontConfig, alignConfig, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state } = opts
+    const { rowData, structure, structureConfig, structureState, handler, fontConfig, alignConfig, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state, warn } = opts
     const { nameFont, nameFontSize, nameFontColor, charFont, charFontName } = fontConfig
     const { rowWidth } = alignMetrics
     const { genericRowHeight, maxNameImageWidth } = alignConfig
@@ -11916,6 +11916,8 @@ const { render } = (() => {
       const structureHandler = makeStructureHandler ({ structureState, alignSummary, rowData, dom })
       treeSummary.nodes.forEach ((node, row) => {
 
+        log (warn, "Building row #" + (row+1) + "/" + treeSummary.nodes.length + ": " + node)
+        
         const colToSeqPos = alignSummary.alignColToSeqPos[node]
         const seqData = rowData[node]
 
@@ -12305,7 +12307,15 @@ const { render } = (() => {
                antialias: true,
                quality : 'medium' }
     const viewer = pv.Viewer (pvDiv, pvConfig)
-    pv.io.fetchPdb (structure.path, (pdb) => {
+    const loadFromPDB = structureConfig.loadFromPDB
+    const pdbFilePath = ((loadFromPDB
+                          ? 'https://files.rcsb.org/download/'
+                          : (structureConfig.pdbFilePrefix || ''))
+                         + structure.pdbFile
+                         + (loadFromPDB
+                            ? '.pdb'
+                            : (structureConfig.pdbFileSuffix || '')))
+    pv.io.fetchPdb (pdbFilePath, (pdb) => {
       // display the protein as cartoon, coloring the secondary structure
       // elements in a rainbow gradient.
       viewer.cartoon('protein', pdb, { color : pv.color.ssSuccession() })
@@ -12366,7 +12376,9 @@ const { render } = (() => {
   }
 
   // method to get data & build tree if necessary
+  const pdbRegex = /PDB; +(\S+) +(\S); ([0-9]+)/;   /* PFAM format for embedding PDB IDs in Stockholm files */
   const getData = (data, config) => {
+    const structure = data.structure = data.structure || {}
     if (!(data.root && data.branches && data.rowData)) {
       let newickStr = data.newick
       if (data.stockholm) {
@@ -12374,6 +12386,17 @@ const { render } = (() => {
         data.rowData = stock.seqdata
         if (stock.gf.NH && !newickStr)
           newickStr = stock.gf.NH.join('')
+        if (stock.gs.DR && (config.loadFromPDB || (config.structure && config.structure.loadFromPDB)))
+          Object.keys(stock.gs.DR).forEach ((node) => {
+            stock.gs.DR[node].forEach ((dr) => {
+              const match = pdbRegex.exec(dr)
+              if (match)
+                structure[node] = { pdbFile: match[1].toLowerCase(),
+                                    chain: match[2],
+                                    startPos: parseInt (match[3]),
+                                    loadFromPDB: true }
+            })
+          })
       } else if (data.fasta)
         data.rowData = parseFasta (data.fasta)
       else
@@ -12396,6 +12419,7 @@ const { render } = (() => {
         const taxa = Object.keys(data.rowData).sort(), seqs = taxa.map ((taxon) => data.rowData[taxon])
         const distMatrix = JukesCantor.calcDistanceMatrix (seqs)
         const rnj = new RapidNeighborJoining.RapidNeighborJoining (distMatrix, taxa.map ((name) => ({ name })))
+        log (config.warn, "Building neighbor-joining tree")
         rnj.run()
         const tree = rnj.getAsObject()
         let nodes = 0
@@ -12426,6 +12450,11 @@ const { render } = (() => {
     })
     return seq
   }
+
+  // logging
+  const log = (warn, message) => {
+    (warn || console.warn) (message)
+  }
   
   // main entry point
   const render = (opts) => {
@@ -12451,6 +12480,7 @@ const { render } = (() => {
 
     // TODO: refactor default config into a single extend(defaultConfig,config)
     const parent = config.parent
+    const warn = config.warn
     const treeAlignHeight = config.treeAlignHeight || 400
     const genericRowHeight = config.genericRowHeight || 24
     const nameFontSize = config.nameFontSize || 12
@@ -12508,7 +12538,7 @@ const { render } = (() => {
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, treeAlignState, treeConfig, treeDiv })
 
     // build the alignment
-    let { namesDiv, rowsDiv, rowDivList, rebuilt } = buildAlignment ({ rowData, dom, structure, structureConfig, structureState, handler, fontConfig, alignConfig, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
+    let { namesDiv, rowsDiv, rowDivList, rebuilt } = buildAlignment ({ rowData, dom, structure, warn, structureConfig, structureState, handler, fontConfig, alignConfig, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
     extend (dom, { namesDiv, rowsDiv, rowDivList })
 
     // style the alignment

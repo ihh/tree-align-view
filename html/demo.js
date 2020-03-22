@@ -1,14 +1,16 @@
 window.onload = () => {
   let mainDiv = document.getElementById ('main')
-
+  let loadingDiv = document.getElementById('loading')
+  
   // Sequences from Pfam family PF09408 and https://www.nature.com/articles/s41591-020-0820-9
   // Alignment created using https://github.com/evoldoers/historian as follows:
   //  historian spike_rec_bind.fasta -output json -v3 -nj -careful -noancs
 
   let opts = {
     data: {
-        "root": "node61",
-        "branches": [
+
+      "root": "node61",
+      "branches": [
         ["node3","SPIKE_CVP67/326-526",0.0044021],
         ["node3","Q2QKN3_9BETC/326-526",0.000545546],
         ["node13","node3",0.184142],
@@ -69,7 +71,7 @@ window.onload = () => {
         ["node59","node58",0.135815],
         ["node60","node59",0.0263022],
         ["node61","node60",0.00672813]],
-        "rowData": {
+      "rowData": {
         "SPIKE_CVP67/326-526": "PDLP-NCDIEAWLNSKTV--SSPLNWERKIFSNCNFNMGRLMSFIQADSFGCNNIDASRLYGMCFGSITIDKFAIPNSRKVDLQVGKSGYLQSFNYKI--DTAVSSCQL-----------------YYSLPA-AN---VS------VTHYNPSSWNRRY--GFNNQS-F-------------GS-RGLHDAVY-SQQC-----------F---N----------TP---N----T------Y----------C------------------------PCRT--SQCIGG-------------------A-----G--TG------T-------------------CPVGTTVRKCF---AAVT--------KAT---K-----------CT------------------CWCQPDPS-------------T----------------------",
         "Q2QKN3_9BETC/326-526": "PDLP-NCDIEAWLNSKTV--SSPLNWERKIFSNCNFNMGRLMSFIQADSFGCNNIDASRLYGMCFGSITIDKFAIPNSRKVDLQVGKSGYLQSFNYKI--DTAVSSCQL-----------------YYSLPA-AN---VS------VTHYNPSSWNRRY--GFNNQS-F-------------GS-RGLHDAVY-SQQC-----------F---N----------TP---N----T------Y----------C------------------------PCRT--SQCIGG-------------------A-----G--TG------T-------------------CPVGTTVRKCF---AAVT--------NAT---K-----------CT------------------CWCQPDPS-------------T----------------------",
         "SPIKE_CVHN5/322-526": "PNLP-DCDIDNWLNNVSV--PSPLNWERRIFSNCNFNLSTLLRLVHVDSFSCNNLDKSKIFGSCFNSITVDKFAIPNRRRDDLQLGSSGFLQSSNYKI--DISSSSCQL-----------------YYSLPL-VN---VT------INNFNPSSWNRRY--GF---GSF-------------NL--SSYDVVY-SDHC-----------F---S----------VN---S----D------F----------C------------------------PCAD--PSVVNS-------------------C-----A--KS-KPPSAI-------------------CPAGTKYRHCD---------------LDT---TLYVKNW-----CR------------------CSCLPDPI-------------S----------------------",
@@ -101,10 +103,10 @@ window.onload = () => {
         "H9AA65_9BETC/326-540": "PNLP-DCNIEAWLNDKSV--PSPLNWERKTFSNCNFNMSSLMSFIQADSFTCNNIDAAKIYGMCFSSITIDKFAIPNGRKVDLQLGNLGYLQSFNYKI--DTSATSCQL-----------------YYNLPA-AN---VS------VSRLNPSTWNRRF--GFTEQSVFKPQ--------PAGF-FTAHDVVY-AQHC-----------F---K----------AP---T----T------F----------C------------------------PCKLNGSLCVGSG-----SGVDAGFKH----T-----G--IG------T-------------------CPAGTNYLTCY---------------NSV---Q-----------CN------------------CQCTPDPI-------------L----------------------",
         "B7U2P4_9BETC/326-540": "PNLP-DCNIEAWLNDKSV--PSPLNWERKTFSNCNFNMSSLMSFIQADSFTCNNIDAAKIYGMCFSSITIDKFAIPNGRKVDLQLGNLGYLQSFNYRI--DTTATSCQL-----------------YYNLPA-AN---VS------VSRFNPSTWNRRF--GFTEQSVFKPQ--------PAGV-FTDHDVVY-AQHC-----------F---K----------AP---T----N------F----------C------------------------PCKLDGSLCVGSG-----SGIDAGYKN----T-----G--IG------T-------------------CPAGTNYLTCH---------------NAA---Q-----------CD------------------CLCTPDPI-------------T----------------------",
         "Q06BD7_9BETC/326-540": "PNLP-DCNIEAWLNDKSV--PSPLNWERKTFSNCNFNMSSLMSFIQADSFTCNNIDAAKIYGMCFSSITIDKFAIPNGRKVDLQLGNLGYLQSFNYRI--DTTATSCQL-----------------YYNLPA-AN---VS------VSRFNPSTWNRRF--GFTEQSVFKPQ--------PAGV-FTDHDVVY-AQHC-----------F---K----------AP---T----N------F----------C------------------------PCKLDGSLCVGNG-----PGIDAGYKT----S-----G--IG------T-------------------CPAGTNYLTCH---------------NAA---Q-----------CN------------------CLCTPDPI-------------T----------------------"
-        },
+      },
       structure: {
-        "SPIKE_CVHSA/317-569": {
-          path: "pdb/5wrg.pdb",
+        'SPIKE_CVHSA/317-569': {
+          pdbFile: 'pdb/5wrg.pdb',
           startPos: 317,
           chain: 'A'
         }
@@ -122,10 +124,11 @@ window.onload = () => {
           console.warn ('Mouseout ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
         }
       },
-      parent: mainDiv
+      structure: { loadFromPDB: true },
+      parent: mainDiv,
     }
   }
 
   TreeAlignView.render (opts)
-  document.getElementById('loading').innerText = ''
+  loadingDiv.innerText = ''
 }
