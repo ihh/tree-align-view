@@ -362,7 +362,7 @@ const { render } = (() => {
   }
   
   // create alignment
-  const buildAlignment = (opts) => {
+  const buildAlignment = async (opts) => {
     const { rowData, structure, structureConfig, structureState, handler, fontConfig, alignConfig, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state, warn } = opts
     const { nameFont, nameFontSize, nameFontColor, charFont, charFontName } = fontConfig
     const { rowWidth } = alignMetrics
@@ -400,59 +400,64 @@ const { render } = (() => {
       let colSpanList = new Array (alignSummary.columns).fill ([])
       let colImageList = new Array (alignSummary.columns).fill ([])
       const structureHandler = makeStructureHandler ({ structureState, alignSummary, rowData, dom })
-      treeSummary.nodes.forEach ((node, row) => {
+      await treeSummary.nodes.reduce
+      ((promise, node, row) =>
+       promise.then (() => {
+         
+         log (warn, "Building row #" + (row+1) + "/" + treeSummary.nodes.length + ": " + node)
+         
+         const colToSeqPos = alignSummary.alignColToSeqPos[node]
+         const seqData = rowData[node]
 
-        log (warn, "Building row #" + (row+1) + "/" + treeSummary.nodes.length + ": " + node)
-        
-        const colToSeqPos = alignSummary.alignColToSeqPos[node]
-        const seqData = rowData[node]
+         const initClass = treeAlignState.nodeVisible[node] ? 'tav-show' : 'tav-hide'
+         
+         let nameDiv = create ('div', dom.namesDiv,
+                               { height: rowHeight[node] + 'px',
+                                 'flex-direction': 'column',
+                                 'justify-content': 'center' },
+                               { class: initClass })
 
-        const initClass = treeAlignState.nodeVisible[node] ? 'tav-show' : 'tav-hide'
-        
-        let nameDiv = create ('div', dom.namesDiv,
-                              { height: rowHeight[node] + 'px',
-                                'flex-direction': 'column',
-                                'justify-content': 'center' },
+         nameDivList.push (nameDiv)
+         
+         nameSpanList.push (buildNameSpan ({ name: node, structure: structure[node], structureConfig, structureState, structuresDiv, nameFont, nameFontColor, nameDiv }))
+         nameImageList.push (buildNameImage ({ name: node, nameFont, nameFontColor, nameFontSize, nameDiv, nameDivWidth, genericRowHeight, maxNameImageWidth }))
+         
+         let rowDiv = create ('div', dom.rowsDiv,
+                              { height: rowHeight[node] + 'px' },
                               { class: initClass })
 
-        nameDivList.push (nameDiv)
-        
-        nameSpanList.push (buildNameSpan ({ name: node, structure: structure[node], structureConfig, structureState, structuresDiv, nameFont, nameFontColor, nameDiv }))
-        nameImageList.push (buildNameImage ({ name: node, nameFont, nameFontColor, nameFontSize, nameDiv, nameDivWidth, genericRowHeight, maxNameImageWidth }))
-        
-        let rowDiv = create ('div', dom.rowsDiv,
-                             { height: rowHeight[node] + 'px' },
-                             { class: initClass })
+         rowDivList.push (rowDiv)
 
-        rowDivList.push (rowDiv)
+         if (rowData[node]) {
+           let spanList = [], imgList = []
+           rowData[node].split('').forEach ((c, col) => {
+             const coords = { node,
+                              row,
+                              column: col,
+                              seqPos: colToSeqPos && colToSeqPos[col],
+                              c,
+                              isGap: isGapChar(c) }
 
-        if (rowData[node]) {
-          let spanList = [], imgList = []
-          rowData[node].split('').forEach ((c, col) => {
-            const coords = { node,
-                             row,
-                             column: col,
-                             seqPos: colToSeqPos && colToSeqPos[col],
-                             c,
-                             isGap: isGapChar(c) }
+             const className = 'tav-col-' + col
+             const span = buildAlignCharSpan ({ alignMetrics, className, color: fontConfig.color, c, handler, structureHandler, coords, rowDiv, genericRowHeight, dom })
+             const img = buildAlignCharImage ({ alignMetrics, className, c, rowDiv, genericRowHeight })
+             colSpanList[col].push (span)
+             colImageList[col].push (img)
+             spanList.push (span)
+             imgList.push (img)
+           })
+           rowSpanList.push (spanList)
+           rowImageList.push (imgList)
+         } else {
+           colSpanList.forEach ((col) => col.push (null))
+           colImageList.forEach ((col) => col.push (null))
+           rowSpanList.push ([])
+           rowImageList.push ([])
+         }
 
-            const className = 'tav-col-' + col
-            const span = buildAlignCharSpan ({ alignMetrics, className, color: fontConfig.color, c, handler, structureHandler, coords, rowDiv, genericRowHeight, dom })
-            const img = buildAlignCharImage ({ alignMetrics, className, c, rowDiv, genericRowHeight })
-            colSpanList[col].push (span)
-            colImageList[col].push (img)
-            spanList.push (span)
-            imgList.push (img)
-          })
-          rowSpanList.push (spanList)
-          rowImageList.push (imgList)
-        } else {
-          colSpanList.forEach ((col) => col.push (null))
-          colImageList.forEach ((col) => col.push (null))
-          rowSpanList.push ([])
-          rowImageList.push ([])
-        }
-      })
+         return delayPromise (0)
+       }),
+       new Promise ((resolve) => resolve()))
 
       extend (dom, { nameDivList, nameSpanList, nameImageList, rowDivList, rowSpanList, rowImageList, colSpanList, colImageList })
     }
@@ -941,9 +946,14 @@ const { render } = (() => {
   const log = (warn, message) => {
     (warn || console.warn) (message)
   }
+
+  // Promise delay
+  const delayPromise = (delay) => {
+    return new Promise ((resolve) => setTimeout (resolve, delay))
+  }
   
   // main entry point
-  const render = (opts) => {
+  const render = async (opts) => {
     // branches is a list of [parent,child,length]
     // rowData is a map of seqname->row
     // All nodes MUST be uniquely named!
@@ -1024,7 +1034,7 @@ const { render } = (() => {
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, treeAlignState, treeConfig, treeDiv })
 
     // build the alignment
-    let { namesDiv, rowsDiv, rowDivList, rebuilt } = buildAlignment ({ rowData, dom, structure, warn, structureConfig, structureState, handler, fontConfig, alignConfig, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
+    let { namesDiv, rowsDiv, rowDivList, rebuilt } = await buildAlignment ({ rowData, dom, structure, warn, structureConfig, structureState, handler, fontConfig, alignConfig, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
     extend (dom, { namesDiv, rowsDiv, rowDivList })
 
     // style the alignment

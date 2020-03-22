@@ -124,11 +124,11 @@ window.onload = () => {
           console.warn ('Mouseout ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
         }
       },
-      structure: { loadFromPDB: true },
       parent: mainDiv,
+      warn: (message) => loadingDiv.innerText = message,
     }
   }
 
   TreeAlignView.render (opts)
-  loadingDiv.innerText = ''
+    .then (() => loadingDiv.innerText = '')
 }
