@@ -18,7 +18,8 @@ const { render } = (() => {
   const getColor = (c, color) => color[c.toUpperCase()] || color['default'] || 'black';
 
   // CSS
-  const addStylesToDocument = (columns) => {
+  const addStylesToDocument = (opts) => {
+    const { columns, alignMetrics } = opts
     const head = document.getElementsByTagName('head')[0]
 
     if (!document.getElementById ('tav-global-styles')) {
@@ -27,9 +28,8 @@ const { render } = (() => {
         ['.tav-hide { display: none; }',
          'div.tav-show, div.tav-anim { display: flex; }',
          '.tav-show span, span.tav-show { display: inline; }',
-         '.tav-show img, img.tav-show { display: none; }',
-         '.tav-anim span, span.tav-anim { display: none; }',
-         '.tav-anim img, img.tav-anim { display: inline; }',
+         '.tav-rows span { ' + makeStyle ({ width: alignMetrics.charWidth,
+                                            'min-width': alignMetrics.charWidth }) + ' }',
          '.tav-rows .tav-show span:hover { border-style: solid; border-color: black; border-width: 1px; margin: -1px; }'
         ].join(' ')
     }
@@ -151,27 +151,17 @@ const { render } = (() => {
   const getAlignMetrics = (opts) => {
     const { treeSummary, alignSummary, genericRowHeight, charFont, color } = opts
     const alignChars = alignSummary.chars
-    let charDescent = 0, charLeft = 0, charWidth = 0, charMetrics = {}
+    let charLeft = 0, charWidth = 0, charMetrics = {}
     alignChars.forEach ((c) => {
       let measureCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
       let measureContext = measureCanvas.getContext('2d')
       measureContext.font = charFont
       charMetrics[c] = measureContext.measureText (c)
       charWidth = Math.max (charWidth, Math.ceil (charMetrics[c].width))
-      charDescent = Math.max (charDescent, charMetrics[c].actualBoundingBoxDescent)
       charLeft = Math.min (charLeft, charMetrics[c].actualBoundingBoxLeft)
     })
-    let charImage = {}
-    alignChars.forEach ((c) => {
-      let charCanvas = create ('canvas', null, null, { width: charWidth, height: genericRowHeight })
-      let charContext = charCanvas.getContext('2d')
-      charContext.font = charFont
-      charContext.fillStyle = getColor (c, color)
-      charContext.fillText (c, 0, genericRowHeight - charDescent)
-      charImage[c] = charCanvas.toDataURL()
-    })
     const charHeight = genericRowHeight, rowWidth = charWidth * alignSummary.columns
-    return { charMetrics, charLeft, charDescent, charWidth, charHeight, charImage, rowWidth }
+    return { charMetrics, charLeft, charWidth, charHeight, rowWidth }
   }
   
   // render tree
@@ -247,9 +237,9 @@ const { render } = (() => {
   // create tree-alignment container DIVs
   let globalInstanceCount = 0   // so we can have multiple instances on a page, without CSS conflicts
   const createContainer = (opts) => {
-    const { parent, dom, containerWidth, containerHeight, treeAlignHeight, structureConfig, treeWidth, treeHeight, alignSummary } = opts
+    const { parent, dom, containerWidth, containerHeight, treeAlignHeight, structureConfig, treeWidth, treeHeight, alignSummary, alignMetrics } = opts
     if (!dom.colStyle)
-      dom.colStyle = addStylesToDocument (alignSummary.columns)
+      dom.colStyle = addStylesToDocument ({ columns: alignSummary.columns, alignMetrics })
     if (!dom.instanceClass)
       dom.instanceClass = 'tav-' + (++globalInstanceCount)
     let container = dom.container || create ('div', opts.parent,
@@ -304,35 +294,13 @@ const { render } = (() => {
     return nameSpan
   }
   
-  // build image for a row name
-  const buildNameImage = (opts) => {
-    const { name, nameFont, nameFontColor, nameFontSize, nameDivWidth, nameDiv, maxNameImageWidth, genericRowHeight } = opts
-    let measureCanvas = create ('canvas', null, null, { width: maxNameImageWidth, height: genericRowHeight })
-    let measureContext = measureCanvas.getContext('2d')
-    measureContext.font = nameFont
-    const nameMetrics = measureContext.measureText (name)
-    let nameCanvas = create ('canvas', null, null, { width: nameMetrics.width,
-                                                     height: genericRowHeight })
-    let nameContext = nameCanvas.getContext('2d')
-    nameContext.font = nameFont
-    nameContext.fillStyle = nameFontColor
-    nameContext.fillText (name, 0, (genericRowHeight + nameFontSize) / 2 - 1)
-    const data = nameCanvas.toDataURL()
-    let img = create ('img', nameDiv,
-                      { width: nameMetrics.width })
-    img.src = data
-    return img
-  }
-
   // build span for an alignment char
   const buildAlignCharSpan = (opts) => {
     const { alignMetrics, className, color, c, handler, structureHandler, coords, rowDiv, genericRowHeight, dom } = opts
     const charMetrics = alignMetrics.charMetrics[c]
     const col = getColor (c, color)
     let charSpan = create ('span', rowDiv,
-                           { color: col,
-                             'min-width': alignMetrics.charWidth,
-                             width: alignMetrics.charWidth },
+                           { color: col },
                            { class: className })
     charSpan.innerText = c
     const handlers = [structureHandler, handler]
@@ -357,22 +325,12 @@ const { render } = (() => {
     })
     return charSpan
   }
-
-  // build image for an alignment column
-  const buildAlignCharImage = (opts) => {
-    const { alignMetrics, className, c, rowDiv, genericRowHeight } = opts
-    let img = create ('img', rowDiv, null,
-                      { class: className })
-    img.src = alignMetrics.charImage[c]
-    return img
-  }
   
   // create alignment
   const buildAlignment = async (opts) => {
-    const { rowData, structure, structureConfig, structureState, handler, fontConfig, alignConfig, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state, warn } = opts
+    const { rowData, structure, structureConfig, structureState, handler, fontConfig, genericRowHeight, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state, warn } = opts
     const { nameFont, nameFontSize, nameFontColor, charFont, charFontName } = fontConfig
     const { rowWidth } = alignMetrics
-    const { genericRowHeight, maxNameImageWidth } = alignConfig
     const { alignDiv, structuresDiv } = dom
     
     if (!dom.namesDiv) {   // first build?
@@ -388,7 +346,7 @@ const { render } = (() => {
       
       dom.rowsDiv = create ('div', alignDiv,
                             { 'font-family': charFontName,
-                              'font-size': alignConfig.genericRowHeight + 'px',
+                              'font-size': genericRowHeight + 'px',
                               'overflow-x': 'scroll',
                               'overflow-y': 'hidden',
                               'user-select': 'none',
@@ -401,10 +359,9 @@ const { render } = (() => {
 
       attachDragHandlers ({ dom, state })
 
-      // create the alignment names & rows, with alternating spans and (initially hidden) images
-      let nameDivList = [], nameSpanList = [], nameImageList = [], rowDivList = [], rowSpanList = [], rowImageList = []
+      // create the alignment names & rows
+      let nameDivList = [], nameSpanList = [], rowDivList = [], rowSpanList = []
       let colSpanList = new Array (alignSummary.columns).fill ([])
-      let colImageList = new Array (alignSummary.columns).fill ([])
       const structureHandler = makeStructureHandler ({ structureState, alignSummary, rowData, dom })
       await treeSummary.nodes.reduce
       ((promise, node, row) =>
@@ -426,7 +383,6 @@ const { render } = (() => {
          nameDivList.push (nameDiv)
          
          nameSpanList.push (buildNameSpan ({ name: node, structure: structure[node], structureConfig, structureState, structuresDiv, nameFont, nameFontColor, nameDiv }))
-         nameImageList.push (buildNameImage ({ name: node, nameFont, nameFontColor, nameFontSize, nameDiv, nameDivWidth, genericRowHeight, maxNameImageWidth }))
          
          let rowDiv = create ('div', dom.rowsDiv,
                               { height: rowHeight[node] + 'px' },
@@ -435,7 +391,7 @@ const { render } = (() => {
          rowDivList.push (rowDiv)
 
          if (rowData[node]) {
-           let spanList = [], imgList = []
+           let spanList = []
            rowData[node].split('').forEach ((c, col) => {
              const coords = { node,
                               row,
@@ -446,26 +402,20 @@ const { render } = (() => {
 
              const className = 'tav-col-' + col
              const span = buildAlignCharSpan ({ alignMetrics, className, color: fontConfig.color, c, handler, structureHandler, coords, rowDiv, genericRowHeight, dom })
-             const img = buildAlignCharImage ({ alignMetrics, className, c, rowDiv, genericRowHeight })
              colSpanList[col].push (span)
-             colImageList[col].push (img)
              spanList.push (span)
-             imgList.push (img)
            })
            rowSpanList.push (spanList)
-           rowImageList.push (imgList)
          } else {
            colSpanList.forEach ((col) => col.push (null))
-           colImageList.forEach ((col) => col.push (null))
            rowSpanList.push ([])
-           rowImageList.push ([])
          }
 
          return delayPromise (0)
        }),
        new Promise ((resolve) => resolve()))
 
-      extend (dom, { nameDivList, nameSpanList, nameImageList, rowDivList, rowSpanList, rowImageList, colSpanList, colImageList })
+      extend (dom, { nameDivList, nameSpanList, rowDivList, rowSpanList, colSpanList })
     }
     return dom
   }
@@ -477,15 +427,20 @@ const { render } = (() => {
     const { rowHeight } = treeLayout
     
     treeSummary.nodes.forEach ((node, row) => {
-      const newClass = getRowClass (nodeVisible[node], nodeScale[node])
-      const oldClass = getRowClass (prevState.nodeVisible[node], prevState.nodeScale[node])
+      const scale = nodeScale[node], prevScale = prevState.nodeScale[node]
+      const newClass = getRowClass (nodeVisible[node], scale)
+      const oldClass = getRowClass (prevState.nodeVisible[node], prevScale)
       if (newClass !== oldClass) {
         dom.nameDivList[row].setAttribute ('class', newClass)
         dom.rowDivList[row].setAttribute ('class', newClass)
       }
-      if (nodeScale[node] !== prevState.nodeScale[node]) {
-        const newStyle = { height: rowHeight[node],
-                           opacity: nodeScale[node] || 1 }
+      if (scale !== prevScale) {
+        const newStyle = { height: rowHeight[node] }
+        if (typeof(scale) !== 'undefined' && scale != 1) {
+          newStyle.transform = 'scale(1,' + scale +')'
+          newStyle.opacity = scale
+        } else
+          newStyle.transform = newStyle.opacity = ''
         updateStyle (dom.nameDivList[row], newStyle)
         updateStyle (dom.rowDivList[row], newStyle)
       }
@@ -497,10 +452,9 @@ const { render } = (() => {
       if (newStyle != oldStyle) {
         const instanceSelector = '.' + dom.instanceClass + ' .tav-rows'
         const colSelector = '.tav-col-' + col
-        dom.colStyle[col].innerText = instanceSelector + ' :not(.tav-hide) img' + colSelector + '{' + newStyle + '}'
-          + (columnVisible[col] && typeof(columnScale[col]) === 'undefined'
-             ? ''
-             : (instanceSelector + ' span' + colSelector + '{display:none}'))
+        dom.colStyle[col].innerText = (newStyle
+                                       ? (instanceSelector + ' ' + colSelector + '{' + newStyle + '}')
+                                       : '')
       }
     })
 
@@ -524,8 +478,9 @@ const { render } = (() => {
     let styles = (visible
                   ? (typeof(scale) === 'undefined'
                      ? {}
-                     : { display: 'inline',
-                         width: scale * alignMetrics.charWidth,
+                     : { width: scale * alignMetrics.charWidth,
+                         'min-width': scale * alignMetrics.charWidth,
+                         transform: 'scale(' + scale + ',1)',
                          opacity: scale || 1 })
                   : { display: 'none' })
     return makeStyle (styles)
@@ -1009,13 +964,11 @@ const { render } = (() => {
     const nameFontName = 'serif'
     const nameFontColor = 'black'
     const scrollbarHeight = 20  // hack, could be platform-dependent, a bit fragile...
-    const maxNameImageWidth = 1000  // hack, a bit arbitrary
     
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
     
     const treeConfig = { treeWidth, availableTreeWidth, genericRowHeight, branchStrokeStyle, nodeHandleStrokeStyle, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, treeStrokeWidth, scrollbarHeight }
-    const alignConfig = { maxNameImageWidth, genericRowHeight }
     const fontConfig = { charFont, charFontName, color, nameFont, nameFontName, nameFontSize, nameFontColor }
 
     // analyze tree & alignment
@@ -1030,17 +983,17 @@ const { render } = (() => {
 
     // get alignment metrics
     const alignMetrics = summary.alignMetrics = summary.alignMetrics || getAlignMetrics ({ treeSummary, alignSummary, genericRowHeight, charFont, color })
-    const { rowWidth, charDescent, charWidth, charHeight } = alignMetrics
+    const { rowWidth, charWidth, charHeight } = alignMetrics
     
     // create the tree & alignment container DIVs
-    let { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv } = createContainer ({ parent, dom, containerWidth, containerHeight, treeAlignHeight, treeWidth, treeHeight, structureConfig, alignSummary })
+    let { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv } = createContainer ({ parent, dom, containerWidth, containerHeight, treeAlignHeight, treeWidth, treeHeight, structureConfig, alignSummary, alignMetrics })
     extend (dom, { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv })
 
     // render the tree
     const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, treeAlignState, treeConfig, treeDiv })
 
     // build the alignment
-    let { namesDiv, rowsDiv, rowDivList, rebuilt } = await buildAlignment ({ rowData, dom, structure, warn, structureConfig, structureState, handler, fontConfig, alignConfig, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
+    let { namesDiv, rowsDiv, rowDivList, rebuilt } = await buildAlignment ({ rowData, dom, structure, warn, structureConfig, structureState, handler, fontConfig, genericRowHeight, nameDivWidth, rowHeight, alignMetrics, treeSummary, alignSummary, treeAlignState, state })
     extend (dom, { namesDiv, rowsDiv, rowDivList })
 
     // style the alignment
