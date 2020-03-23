@@ -11558,17 +11558,21 @@ const { render } = (() => {
   // summarize alignment
   const summarizeAlignment = (opts) => {
     const { rowData } = opts
-    let alignColToSeqPos = {}, isChar = {}, columns
+    let alignColToSeqPos = {}, seqPosToAlignCol = {}, isChar = {}, columns
     Object.keys(rowData).forEach ((node) => {
       const row = rowData[node]
       if (typeof(columns) !== 'undefined' && columns != row.length)
         console.error ("Inconsistent row lengths")
       columns = row.length
-      let pos = 0
-      alignColToSeqPos[node] = row.split('').map ((c) => {
+      let pos2col = [], pos = 0
+      alignColToSeqPos[node] = row.split('').map ((c, col) => {
         isChar[c] = true
-        return isGapChar(c) ? pos : pos++
+        const isGap = isGapChar(c)
+        if (!isGap)
+          pos2col.push (col)
+        return isGap ? pos : pos++
       })
+      seqPosToAlignCol[node] = pos2col
     })
     const chars = Object.keys(isChar).sort()
     return { alignColToSeqPos, columns, chars }
