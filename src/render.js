@@ -160,8 +160,8 @@ const { render } = (() => {
       charWidth = Math.max (charWidth, Math.ceil (charMetrics[c].width))
       charLeft = Math.min (charLeft, charMetrics[c].actualBoundingBoxLeft)
     })
-    const charHeight = genericRowHeight, rowWidth = charWidth * alignSummary.columns
-    return { charMetrics, charLeft, charWidth, charHeight, rowWidth }
+    const charHeight = genericRowHeight
+    return { charMetrics, charLeft, charWidth, charHeight }
   }
   
   // render tree
@@ -330,7 +330,6 @@ const { render } = (() => {
   const buildAlignment = async (opts) => {
     const { rowData, structure, structureConfig, structureState, handler, fontConfig, genericRowHeight, alignMetrics, nameDivWidth, rowHeight, treeSummary, treeAlignState, alignSummary, dom, state, warn } = opts
     const { nameFont, nameFontSize, nameFontColor, charFont, charFontName } = fontConfig
-    const { rowWidth } = alignMetrics
     const { alignDiv, structuresDiv } = dom
     
     if (!dom.namesDiv) {   // first build?
@@ -445,7 +444,7 @@ const { render } = (() => {
         updateStyle (dom.rowDivList[row], newStyle)
       }
     })
-    
+
     dom.colSpanList.forEach ((colSpan, col) => {
       const newStyle = getColStyle (columnVisible[col], columnScale[col], alignMetrics)
       const oldStyle = getColStyle (prevState.columnVisible[col], prevState.columnScale[col], alignMetrics)
@@ -459,7 +458,7 @@ const { render } = (() => {
     })
 
     prevState.nodeVisible = extend ({}, nodeVisible)
-    prevState.columnVisible = extend ({}, columnVisible)
+    prevState.columnVisible = columnVisible.slice(0)
     prevState.nodeScale = extend ({}, nodeScale)
     prevState.columnScale = extend ({}, columnScale)
   }
@@ -932,7 +931,7 @@ const { render } = (() => {
     const nodeScale = state.nodeScale = state.nodeScale || {}
     const columnScale = state.columnScale = state.columnScale || {}
     const disableTreeEvents = state.disableTreeEvents
-    const prevState = state.prevState = state.prevState || { nodeVisible: {}, columnVisible: {}, nodeScale: {}, columnScale: {} }
+    const prevState = state.prevState = state.prevState || { nodeVisible: {}, columnVisible: [], nodeScale: {}, columnScale: {} }
     const structureState = state.structure = state.structure || { openStructures: [] }
 
     // TODO: refactor default config into a single extend(defaultConfig,config)
@@ -983,7 +982,7 @@ const { render } = (() => {
 
     // get alignment metrics
     const alignMetrics = summary.alignMetrics = summary.alignMetrics || getAlignMetrics ({ treeSummary, alignSummary, genericRowHeight, charFont, color })
-    const { rowWidth, charWidth, charHeight } = alignMetrics
+    const { charWidth, charHeight } = alignMetrics
     
     // create the tree & alignment container DIVs
     let { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv } = createContainer ({ parent, dom, containerWidth, containerHeight, treeAlignHeight, treeWidth, treeHeight, structureConfig, alignSummary, alignMetrics })
