@@ -11629,7 +11629,9 @@ const { render } = (() => {
         kids.forEach ((child) => setCollapsedState (child, node))
     }
     setCollapsedState (treeSummary.root)
-    treeSummary.nodes.forEach ((node) => nodeVisible[node] = (!ancestorCollapsed[node] && (rowData[node] || forceDisplayNode[node]) && true))
+    treeSummary.nodes.forEach ((node) => nodeVisible[node] = (!ancestorCollapsed[node]
+                                                              && (treeSummary.children[node].length === 0
+                                                                  || forceDisplayNode[node])))
     let columnVisible = new Array(alignSummary.columns).fill(false)
     treeSummary.nodes.filter ((node) => nodeVisible[node]).forEach ((node) => {
       if (rowData[node])
