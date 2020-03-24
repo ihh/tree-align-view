@@ -169,13 +169,18 @@ const { render } = (() => {
     let nextColX = 0, colX = [], colWidth = [], computedColScale = []
     for (let col = 0; col < alignSummary.columns; ++col) {
       colX.push (nextColX)
-      let scale = treeAlignState.columnScale[col]
-      if (typeof(scale) === 'undefined')
-        scale = 1
-      computedColScale.push (scale)
-      const width = scale * charWidth
-      colWidth.push (width)
-      nextColX += width
+      if (treeAlignState.columnVisible[col]) {
+        let scale = treeAlignState.columnScale[col]
+        if (typeof(scale) === 'undefined')
+          scale = 1
+        computedColScale.push (scale)
+        const width = scale * charWidth
+        colWidth.push (width)
+        nextColX += width
+      } else {
+        computedColScale.push (0)
+        colWidth.push (0)
+      }
     }
 
     return { charMetrics, charWidth, charHeight, colX, colWidth, computedColScale, alignWidth: nextColX }
@@ -384,9 +389,6 @@ const { render } = (() => {
        promise.then (() => {
          
          log (warn, "Building row #" + (row+1) + "/" + treeSummary.nodes.length + ": " + node)
-         
-//         const colToSeqPos = alignSummary.alignColToSeqPos[node]
-//         const seqData = rowData[node]
 
          const initClass = treeAlignState.nodeVisible[node] ? 'tav-show' : 'tav-hide'
          
@@ -587,7 +589,7 @@ const { render } = (() => {
     const { treeSummary, alignSummary, rowData, handler, treeAlignState, renderOpts } = opts
     const { collapsed, nodeScale, columnScale, forceDisplayNode, nodeVisible, columnVisible } = treeAlignState
     const collapseAnimationFrames = 10
-    const collapseAnimationDuration = 2000
+    const collapseAnimationDuration = 200
     const collapseAnimationMaxFrameSkip = 8
     return (node) => {
       if (!handler || !handler.nodeClick || handler.nodeClick (node)) {
@@ -743,6 +745,10 @@ const { render } = (() => {
     treeAlignDiv.addEventListener("scroll", e => {
       delayedCanvasRedraw (dom, state)
     })
+
+    window.addEventListener("resize", e => {
+      delayedCanvasRedraw (dom, state)
+    })
   }
   
   // render to canvas
@@ -769,22 +775,32 @@ const { render } = (() => {
                 height = treeLayout.rowHeight[row],
                 seq = rowData[treeSummary.nodes[row]]
           if (height && seq) {
-            ctx.setTransform (xScale, 0, 0, yScale, (colX - left) / xScale, (rowY - top) / yScale)
+            ctx.setTransform (xScale, 0, 0, yScale, colX - left, rowY + height - top)
             const c = seq[col]
             ctx.fillStyle = getColor (c, fontConfig.color)
-            ctx.fillText (c, 0, alignLayout.charHeight / yScale)
+            ctx.globalAlpha = Math.min (xScale, yScale)
+            ctx.fillText (c, 0, 0)
           }
         }
     }
   }
 
   // create the canvas and attach to the alignment
+  const offscreenRatio = 1  // the proportion of the rendered view that is invisible, on each side. Total rendered area = visible area * (1 + 2 * offscreenRatio)^2
   const attachAlignCanvas = (opts) => {
     const { dom, treeSummary, treeLayout, alignSummary, rowData, fontConfig, alignLayout, state } = opts
     const { rowsDiv } = dom
     dom.redrawCanvas = () => {
-      const top = state.scrollTop || 0, left = state.scrollLeft || 0
-      const width = rowsDiv.offsetWidth, height = rowsDiv.offsetHeight
+      const visibleWidth = rowsDiv.offsetWidth, visibleHeight = rowsDiv.offsetHeight
+      const offscreenWidth = offscreenRatio * visibleWidth, offscreenHeight = offscreenRatio * visibleHeight
+      const scrollTop = state.scrollTop || 0,
+            scrollLeft = state.scrollLeft || 0,
+            top = Math.max (0, scrollTop - offscreenWidth),
+            left = Math.max (0, scrollLeft - offscreenHeight),
+            bottom = Math.min (treeLayout.treeHeight, scrollTop + visibleHeight + offscreenHeight),
+            right = Math.min (alignLayout.alignWidth, scrollLeft + visibleWidth + offscreenWidth),
+            width = right - left,
+            height = bottom - top
       if (dom.canvas)
         dom.rowsDiv.removeChild (dom.canvas)
       const canvas = create ('canvas', rowsDiv,
@@ -794,7 +810,7 @@ const { render } = (() => {
                                left },
                              { width,
                                height })
-      drawVisibleAlignmentRegionToCanvas ({ canvas, top, left, treeSummary, treeLayout, alignSummary, rowData, fontConfig, alignLayout })
+      drawVisibleAlignmentRegionToCanvas ({ canvas, top, left, width, height, treeSummary, treeLayout, alignSummary, rowData, fontConfig, alignLayout })
       dom.canvas = canvas
     }
     dom.redrawCanvas()
@@ -1076,7 +1092,7 @@ const { render } = (() => {
     const { nx, ny, nodeHeight, treeHeight } = treeLayout
 
     // get alignment metrics
-    const alignLayout = summary.alignLayout = summary.alignLayout || layoutAlignment ({ treeSummary, alignSummary, treeAlignState, genericRowHeight, charFont, color, treeAlignState })
+    const alignLayout = layoutAlignment ({ treeSummary, alignSummary, treeAlignState, genericRowHeight, charFont, color, treeAlignState })
     const { charWidth, charHeight } = alignLayout
     
     // create the tree & alignment container DIVs
