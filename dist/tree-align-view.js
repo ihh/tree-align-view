@@ -11557,7 +11557,8 @@ const { render } = (() => {
   
   // index alignment
   const indexAlignment = (opts) => {
-    const { rowData } = opts
+    const { data } = opts
+    const { rowData } = data
     let alignColToSeqPos = {}, seqPosToAlignCol = {}, isChar = {}, columns
     Object.keys(rowData).forEach ((node) => {
       const row = rowData[node]
@@ -11578,11 +11579,35 @@ const { render } = (() => {
     return { alignColToSeqPos, columns, chars }
   }
 
+  // helper to recognize gap characters
   const isGapChar = (c) => { return c == '-' || c == '.' }
+
+  // get the root node(s) of a list of [parent,child,length] branches
+  const getRoots = (branches) => {
+    const isNode = {}, hasParent = {}
+    branches.forEach ((branch) => {
+      const [p, c] = branch
+      isNode[p] = isNode[c] = hasParent[c] = true
+    })
+    return Object.keys(isNode).filter ((n) => !hasParent[n]).sort()
+  }
   
   // index tree
   const indexTree = (opts) => {
-    const { root, branches } = opts
+    const { data } = opts
+    const { branches } = data
+    let { root } = data, rootSpecified = typeof(root) !== 'undefined'
+    const roots = getRoots (branches)
+    if (roots.length == 0 && (branches.length > 0 || !rootSpecified))
+      throw new Error ("No root nodes")
+    if (rootSpecified) {
+      if (roots.indexOf(root) < 0)
+        throw new Error ("Specified root node is not a root")
+    } else {
+      if (roots.length != 1)
+        throw new Error ("Multiple possible root nodes, and no root specified")
+      root = roots[0]
+    }
     let children = {}, branchLength = {}
     children[root] = []
     branchLength[root] = 0
@@ -11905,7 +11930,7 @@ const { render } = (() => {
   // style alignment
   const styleAlignment = (opts) => {
     const { dom, treeIndex, treeLayout, computedState, alignLayout } = opts
-    const { nodeVisible, columnVisible, nodeScale, columnScale, prevState } = computedState
+    const { nodeVisible, columnVisible, nodeScale, columnScale } = computedState
     const { nodeHeight, treeHeight } = treeLayout
     const { alignWidth } = alignLayout
 
@@ -11913,27 +11938,17 @@ const { render } = (() => {
                                     height: treeHeight })
 
     treeIndex.nodes.forEach ((node, row) => {
-      const scale = nodeScale[node], prevScale = prevState.nodeScale[node]
+      const scale = nodeScale[node]
       const newClass = getRowClass (nodeVisible[node], scale)
-      const oldClass = getRowClass (prevState.nodeVisible[node], prevScale)
-      if (newClass !== oldClass) {
-        dom.nameDivList[row].setAttribute ('class', newClass)
-      }
-      if (scale !== prevScale) {
-        const newStyle = { height: nodeHeight[node] }
-        if (typeof(scale) !== 'undefined' && scale != 1) {
-          newStyle.transform = 'scale(1,' + scale +')'
-          newStyle.opacity = scale
-        } else
-          newStyle.transform = newStyle.opacity = ''
-        updateStyle (dom.nameDivList[row], newStyle)
-      }
+      dom.nameDivList[row].setAttribute ('class', newClass)
+      const newStyle = { height: nodeHeight[node] }
+      if (typeof(scale) !== 'undefined' && scale != 1) {
+        newStyle.transform = 'scale(1,' + scale +')'
+        newStyle.opacity = scale
+      } else
+        newStyle.transform = newStyle.opacity = ''
+      updateStyle (dom.nameDivList[row], newStyle)
     })
-
-    prevState.nodeVisible = extend ({}, nodeVisible)
-    prevState.columnVisible = columnVisible.slice(0)
-    prevState.nodeScale = extend ({}, nodeScale)
-    prevState.columnScale = extend ({}, columnScale)
   }
 
   // CSS class of a row
@@ -12192,7 +12207,7 @@ const { render } = (() => {
     dom.rowsBackDiv.addEventListener ("mousemove", evt => {
       if (!dom.scrolling && !dom.panning) {
         const coords = dom.resolveAlignCoords (evt)
-        if (!lastCoords || coords.row !== lastCoords.row || coords.col !== lastCoords.col) {
+        if (!lastCoords || coords.row !== lastCoords.row || coords.column !== lastCoords.column) {
           if (lastCoords)
             callAlignHandler (evt, dom, lastCoords, "mouseout")
           callAlignHandler (evt, dom, coords, "mouseover")
@@ -12290,8 +12305,8 @@ const { render } = (() => {
       const visibleWidth = rowsDiv.offsetWidth, visibleHeight = rowsDiv.offsetHeight
       const offscreenWidth = offscreenRatio * visibleWidth, offscreenHeight = offscreenRatio * visibleHeight
       const state = getState()
-      const scrollTop = state.scrollTop || 0,
-            scrollLeft = state.scrollLeft || 0,
+      const scrollTop = state.scrollTop,
+            scrollLeft = state.scrollLeft,
             top = Math.max (0, scrollTop - offscreenWidth),
             left = Math.max (0, scrollLeft - offscreenHeight),
             bottom = Math.min (treeLayout.treeHeight, scrollTop + visibleHeight + offscreenHeight),
@@ -12442,14 +12457,14 @@ const { render } = (() => {
   const pdbRegex = /PDB; +(\S+) +(\S); ([0-9]+)/;   /* PFAM format for embedding PDB IDs in Stockholm files */
   const getData = (data, config) => {
     const structure = data.structure = data.structure || {}
-    if (!(data.root && data.branches && data.rowData)) {
-      let newickStr = data.newick
-      if (data.stockholm) {
+    if (!(data.branches && data.rowData)) {
+      let newickStr = data.newick  // was a Newick-format tree specified?
+      if (data.stockholm) {  // was a Stockholm-format alignment specified?
         const stock = Stockholm.parse (data.stockholm)
         data.rowData = stock.seqdata
-        if (stock.gf.NH && !newickStr)
+        if (stock.gf.NH && !newickStr)  // did the Stockholm alignment include a tree?
           newickStr = stock.gf.NH.join('')
-        if (stock.gs.DR && (config.loadFromPDB || (config.structure && config.structure.loadFromPDB)))
+        if (stock.gs.DR && (config.loadFromPDB || (config.structure && config.structure.loadFromPDB)))  // did the Stockholm alignment include links to PDB?
           Object.keys(stock.gs.DR).forEach ((node) => {
             stock.gs.DR[node].forEach ((dr) => {
               const match = pdbRegex.exec(dr)
@@ -12460,16 +12475,17 @@ const { render } = (() => {
                                     loadFromPDB: true }
             })
           })
-      } else if (data.fasta)
+      } else if (data.fasta)  // was a FASTA-format alignment specified
         data.rowData = parseFasta (data.fasta)
       else
         throw new Error ("no sequence data")
+      // If a Newick-format tree was specified somehow (as a separate data item, or in the Stockholm alignment) then parse it
       if (newickStr) {
         const newickTree = Newick.parse (newickStr)
         let nodes = 0
         const getName = (obj) => (obj.name = obj.name || ('node' + (++nodes)))
         data.branches = []
-        const traverse = (parent) => {
+        const traverse = (parent) => {  // auto-name internal nodes
           if (parent.branchset)
             parent.branchset.forEach ((child) => {
               data.branches.push ([getName(parent), getName(child), Math.max (child.length, 0)])
@@ -12478,7 +12494,7 @@ const { render } = (() => {
         }
         traverse (newickTree)
         data.root = getName (newickTree)
-      } else {
+      } else {  // no Newick tree was specified, so build a quick-and-dirty distance matrix with Jukes-Cantor, and get a tree by neighbor-joining
         const taxa = Object.keys(data.rowData).sort(), seqs = taxa.map ((taxon) => data.rowData[taxon])
         const distMatrix = JukesCantor.calcDistanceMatrix (seqs)
         const rnj = new RapidNeighborJoining.RapidNeighborJoining (distMatrix, taxa.map ((name) => ({ name })))
@@ -12488,7 +12504,7 @@ const { render } = (() => {
         let nodes = 0
         const getName = (obj) => { obj.taxon = obj.taxon || { name: 'node' + (++nodes) }; return obj.taxon.name }
         data.branches = []
-        const traverse = (parent) => {
+        const traverse = (parent) => {  // auto-name internal nodes
           parent.children.forEach ((child) => {
             data.branches.push ([getName(parent), getName(child), Math.max (child.length, 0)])
             traverse (child)
@@ -12498,7 +12514,6 @@ const { render } = (() => {
         data.root = getName (tree)
       }
     }
-    return data
   }
 
   // method to parse FASTA (simple enough to build in here)
@@ -12540,28 +12555,29 @@ const { render } = (() => {
     colorScheme: defaultColorScheme
   }
   
-  // main entry point
+  // main entry point: the render method
+  // The basic flow here is as follows:
+  // (1) On the first call to render(), data is made whole (formats parsed, tree estimated if necessary, indices built); state & config are initialized
+  // (2) On every call to render() a layout is performed (for both tree & alignment). Animations involve a series of calls to render(), one per frame, scaling rows & columns
+  // (3) The tree and alignment are also redrawn on every call to render()
+  // (4) Alignment can be redrawn due to scrolling; this however bypasses render() entirely, calling redrawCanvas() instead. This causes some messiness, documented below.
   const render = async (opts) => {
     const { data } = opts
     const indices = opts.indices = opts.indices || {}
     const dom = opts.dom = opts.dom || {}
 
     // state
-    const state = opts.state = extend ({ collapsed: {},
-                                         forceDisplayNode: {},
-                                         nodeScale: {},
-                                         columnScale: {},
+    const state = opts.state = extend ({ collapsed: {},   // true if an internal node has been collapsed by the user
+                                         forceDisplayNode: {},   // force a node to be displayed even if it's flagged as collapsed. Used by animation code
+                                         nodeScale: {},  // height scaling factor for tree nodes / alignment rows. From 0 to 1 (undefined implies 1)
+                                         columnScale: {},  // height scaling factor for alignment columns. From 0 to 1 (undefined implies 1)
                                          scrollTop: 0,
                                          scrollLeft: 0,
                                          disableTreeEvents: false,
-                                         prevState: { nodeVisible: {},
-                                                      columnVisible: [],
-                                                      nodeScale: {},
-                                                      columnScale: {} },
                                          structure: { openStructures: [] } },
                                        opts.state || {})
     
-    const { collapsed, forceDisplayNode, nodeScale, columnScale, disableTreeEvents, prevState, structureState } = state
+    const { collapsed, forceDisplayNode, nodeScale, columnScale, disableTreeEvents, structureState } = state
 
     // Create a function to get state from the opts object, rather than passing in the state object directly.
     // The need for this is a consequence of two things:
@@ -12570,15 +12586,16 @@ const { render } = (() => {
     // The first of these things means that we need to create a closure (redrawCanvas) that can change the state;
     // the second thing means that we can't rely on a reference to state being persistent/stable, so instead we pass in a method that gets it.
     // This is all a bit convoluted and it would almost certainly be better to take a purer React-style approach to redrawing the canvas after a scroll.
+    // (Note that we could also just avoid reassigning opts.state, instead rewriting the individual properties of that object,
+    //  but that makes the code a bit uglier and harder to read.)
     const getState = () => opts.state
     
     // config
     const config = extend ({}, defaultConfig, opts.config || {})
     const { parent, warn, treeAlignHeight, genericRowHeight, nameFontSize, containerHeight, containerWidth, treeWidth, nameDivWidth, branchStrokeStyle, nodeHandleRadius, nodeHandleClickRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, structureConfig, handler } = config
 
-    // data
-    const { root, branches, rowData } = getData (data, opts.config)
-    const structure = data.structure || {}
+    // data (it's assumed that this does not change after the first call)
+    getData (data, config)
 
     // tree configuration
     const treeStrokeWidth = 1
@@ -12596,11 +12613,11 @@ const { render } = (() => {
     const color = config.color || colorScheme[config.colorScheme]
     const computedFontConfig = { charFont, charFontName, color, nameFont, nameFontName, nameFontSize, nameFontColor, genericRowHeight }
 
-    // build indices of tree & alignment
-    const treeIndex = indices.treeIndex = indices.treeIndex || indexTree ({ root, branches, collapsed })
-    const alignIndex = indices.alignIndex = indices.alignIndex || indexAlignment ({ rowData })
+    // build indices of tree & alignment (this only needs to be done once, as it's assumed the data doesn't cahnge)
+    const treeIndex = indices.treeIndex = indices.treeIndex || indexTree ({ data })
+    const alignIndex = indices.alignIndex = indices.alignIndex || indexAlignment ({ data })
 
-    // get tree & alignment layout
+    // get tree & alignment layout. This is recomputed with every call to render()
     const computedState = extend (getNodeVisibility ({ data, state, treeIndex, alignIndex }),
                                   state)
     const treeLayout = layoutTree ({ computedState, computedTreeConfig, treeIndex, config })
