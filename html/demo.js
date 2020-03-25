@@ -114,15 +114,17 @@ window.onload = () => {
     },
     config: {
       handler: {
-        alignClick: (coords) => {
+        click: (coords) => {
           console.warn ('Click ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
         },
-        alignMouseover: (coords) => {
+        /*
+        mouseover: (coords) => {
           console.warn ('Mouseover ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
         },
-        alignMouseout: (coords) => {
+        mouseout: (coords) => {
           console.warn ('Mouseout ' + coords.node + ' column ' + coords.column + (coords.isGap ? '' : (', position ' + coords.seqPos)) + ' (' + coords.c + ')')
-        }
+        },
+        */
       },
       parent: mainDiv,
       warn: (message) => loadingDiv.innerText = message,
