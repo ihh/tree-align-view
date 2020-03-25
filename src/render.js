@@ -41,8 +41,8 @@ const { render } = (() => {
     return colStyle
   }
   
-  // summarize alignment
-  const summarizeAlignment = (opts) => {
+  // index alignment
+  const indexAlignment = (opts) => {
     const { rowData } = opts
     let alignColToSeqPos = {}, seqPosToAlignCol = {}, isChar = {}, columns
     Object.keys(rowData).forEach ((node) => {
@@ -66,8 +66,8 @@ const { render } = (() => {
 
   const isGapChar = (c) => { return c == '-' || c == '.' }
   
-  // summarize tree
-  const summarizeTree = (opts) => {
+  // index tree
+  const indexTree = (opts) => {
     const { root, branches } = opts
     let children = {}, branchLength = {}
     children[root] = []
@@ -110,20 +110,22 @@ const { render } = (() => {
 
   // get tree collapsed/open state
   const getNodeVisibility = (opts) => {
-    const { treeSummary, alignSummary, collapsed, forceDisplayNode, rowData } = opts
+    const { treeIndex, alignIndex, state, data } = opts
+    const { collapsed, forceDisplayNode } = state
+    const { rowData } = data
     let ancestorCollapsed = {}, nodeVisible = {}
     const setCollapsedState = (node, parent) => {
       ancestorCollapsed[node] = ancestorCollapsed[parent] || collapsed[parent]
-      const kids = treeSummary.children[node]
+      const kids = treeIndex.children[node]
       if (kids)
         kids.forEach ((child) => setCollapsedState (child, node))
     }
-    setCollapsedState (treeSummary.root)
-    treeSummary.nodes.forEach ((node) => nodeVisible[node] = (!ancestorCollapsed[node]
-                                                              && (treeSummary.children[node].length === 0
+    setCollapsedState (treeIndex.root)
+    treeIndex.nodes.forEach ((node) => nodeVisible[node] = (!ancestorCollapsed[node]
+                                                              && (treeIndex.children[node].length === 0
                                                                   || forceDisplayNode[node])))
-    let columnVisible = new Array(alignSummary.columns).fill(false)
-    treeSummary.nodes.filter ((node) => nodeVisible[node]).forEach ((node) => {
+    let columnVisible = new Array(alignIndex.columns).fill(false)
+    treeIndex.nodes.filter ((node) => nodeVisible[node]).forEach ((node) => {
       if (rowData[node])
         rowData[node].split('').forEach ((c, col) => { if (!isGapChar(c)) columnVisible[col] = true })
     })
@@ -132,15 +134,16 @@ const { render } = (() => {
   
   // layout tree
   const layoutTree = (opts) => {
-    let { treeAlignState, treeConfig, containerHeight, treeSummary } = opts
-    const { collapsed, nodeVisible, nodeScale } = treeAlignState
-    const { genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight } = treeConfig
+    let { computedState, computedTreeConfig, treeIndex, config } = opts
+    const { containerHeight } = config
+    const { collapsed, nodeVisible, nodeScale } = computedState
+    const { genericRowHeight, nodeHandleRadius, treeStrokeWidth, availableTreeWidth, scrollbarHeight } = computedTreeConfig
     let nx = {}, ny = {}, computedRowScale = [], nodeHeight = {}, rowHeight = [], treeHeight = 0
-    const rowY = treeSummary.nodes.map ((node) => {
+    const rowY = treeIndex.nodes.map ((node) => {
       const scale = typeof(nodeScale[node]) !== 'undefined' ? nodeScale[node] : 1
       const rh = scale * (nodeVisible[node] ? genericRowHeight : 0)
       const y = treeHeight
-      nx[node] = nodeHandleRadius + treeStrokeWidth + availableTreeWidth * treeSummary.distFromRoot[node] / treeSummary.maxDistFromRoot
+      nx[node] = nodeHandleRadius + treeStrokeWidth + availableTreeWidth * treeIndex.distFromRoot[node] / treeIndex.maxDistFromRoot
       ny[node] = y + rh / 2
       nodeHeight[node] = rh
       computedRowScale.push (scale)
@@ -149,13 +152,14 @@ const { render } = (() => {
       return y
     })
     treeHeight += scrollbarHeight
-    return { nx, ny, computedRowScale, nodeHeight, rowHeight, rowY, treeHeight }
+    return { nx, ny, computedRowScale, nodeHeight, rowHeight, rowY, treeHeight, computedState }
   }
 
   // get metrics and other info about alignment font/chars, and do layout
   const layoutAlignment = (opts) => {
-    const { treeSummary, alignSummary, treeAlignState, genericRowHeight, charFont, color } = opts
-    const alignChars = alignSummary.chars
+    const { treeIndex, alignIndex, computedState, computedFontConfig } = opts
+    const { genericRowHeight, charFont, color } = computedFontConfig
+    const alignChars = alignIndex.chars
     let charWidth = 0, charMetrics = {}
     alignChars.forEach ((c) => {
       let measureCanvas = create ('canvas', null, null, { width: genericRowHeight, height: genericRowHeight })
@@ -167,10 +171,10 @@ const { render } = (() => {
     const charHeight = genericRowHeight
 
     let nextColX = 0, colX = [], colWidth = [], computedColScale = []
-    for (let col = 0; col < alignSummary.columns; ++col) {
+    for (let col = 0; col < alignIndex.columns; ++col) {
       colX.push (nextColX)
-      if (treeAlignState.columnVisible[col]) {
-        let scale = treeAlignState.columnScale[col]
+      if (computedState.columnVisible[col]) {
+        let scale = computedState.columnScale[col]
         if (typeof(scale) === 'undefined')
           scale = 1
         computedColScale.push (scale)
@@ -188,9 +192,9 @@ const { render } = (() => {
   
   // render tree
   const renderTree = (opts) => {
-    const { treeWidth, treeSummary, treeLayout, treeAlignState, treeConfig, dom } = opts
-    const { collapsed, ancestorCollapsed, forceDisplayNode, nodeScale } = treeAlignState
-    const { branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle } = treeConfig
+    const { treeIndex, treeLayout, computedState, computedTreeConfig, dom } = opts
+    const { collapsed, ancestorCollapsed, forceDisplayNode, nodeScale } = computedState
+    const { treeWidth, branchStrokeStyle, treeStrokeWidth, rowConnectorDash, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle } = computedTreeConfig
     let { treeDiv } = dom
     const { nx, ny, treeHeight } = treeLayout
     treeDiv.innerHTML = ''
@@ -207,18 +211,18 @@ const { render } = (() => {
       const scale = nodeScale[node]
       ctx.globalAlpha = (typeof(scale) === 'undefined' || forceDisplayNode[node]) ? 1 : scale
     }
-    let nodesWithHandles = treeSummary.nodes.filter ((node) => !ancestorCollapsed[node] && treeSummary.children[node].length)
-    treeSummary.nodes.forEach ((node) => {
+    let nodesWithHandles = treeIndex.nodes.filter ((node) => !ancestorCollapsed[node] && treeIndex.children[node].length)
+    treeIndex.nodes.forEach ((node) => {
       if (!ancestorCollapsed[node]) {
-        if (!treeSummary.children[node].length) {
+        if (!treeIndex.children[node].length) {
           setAlpha (node)
           ctx.setLineDash ([])
           ctx.beginPath()
           ctx.fillRect (nx[node], ny[node] - nodeHandleRadius, 1, 2*nodeHandleRadius)
         }
-        if (treeSummary.children[node].length && !collapsed[node]) {
+        if (treeIndex.children[node].length && !collapsed[node]) {
           ctx.setLineDash ([])
-          treeSummary.children[node].forEach ((child) => {
+          treeIndex.children[node].forEach ((child) => {
             setAlpha (child)
             ctx.beginPath()
             ctx.moveTo (nx[node], ny[node])
@@ -228,7 +232,7 @@ const { render } = (() => {
           })
         }
         ctx.globalAlpha = 1
-        if (treeSummary.children[node].length === 0 || forceDisplayNode[node]) {
+        if (treeIndex.children[node].length === 0 || forceDisplayNode[node]) {
           setAlpha (node)
           ctx.setLineDash (rowConnectorDash)
           ctx.beginPath()
@@ -253,19 +257,21 @@ const { render } = (() => {
       }
       ctx.fill()
     })
-    dom.treeCanvas = treeCanvas
-    return { treeCanvas, nodesWithHandles, makeNodeHandlePath }
+    extend (dom, { treeCanvas, nodesWithHandles, makeNodeHandlePath })
   }
 
   // create tree-alignment container DIVs
   let globalInstanceCount = 0   // so we can have multiple instances on a page, without CSS conflicts
   const createContainer = (opts) => {
-    const { parent, dom, containerWidth, containerHeight, treeAlignHeight, structureConfig, treeWidth, treeHeight, alignSummary, alignLayout } = opts
+    const { dom, config, treeLayout, alignIndex, alignLayout } = opts
+    const { parent, containerWidth, containerHeight, treeAlignHeight, treeWidth } = config
+    const { treeHeight } = treeLayout
+    const structureConfig = config.structure || {}
     if (!dom.colStyle)
-      dom.colStyle = addStylesToDocument ({ columns: alignSummary.columns, alignLayout })
+      dom.colStyle = addStylesToDocument ({ columns: alignIndex.columns, alignLayout })
     if (!dom.instanceClass)
       dom.instanceClass = 'tav-' + (++globalInstanceCount)
-    let container = dom.container || create ('div', opts.parent,
+    let container = dom.container || create ('div', parent,
                                              { display: 'flex',
                                                'flex-direction': 'column',
                                                width: containerWidth,
@@ -298,7 +304,7 @@ const { render } = (() => {
                           overflow: 'hidden',
                           height: treeHeight + 'px' })
 
-    return { container, treeAlignDiv, structuresDiv, treeDiv, alignDiv }
+    extend (dom, { container, treeAlignDiv, structuresDiv, treeDiv, alignDiv })
   }
 
   // build (structure-linked) span for a name
@@ -318,9 +324,14 @@ const { render } = (() => {
   }
 
   // create alignment
-  const buildAlignment = async (opts) => {
-    const { rowData, structure, structureConfig, structureState, handler, fontConfig, genericRowHeight, alignLayout, treeLayout, nameDivWidth, nodeHeight, treeSummary, treeAlignState, alignSummary, dom, state, config, warn } = opts
-    const { nameFont, nameFontSize, nameFontColor, charFont, charFontName } = fontConfig
+  const buildAlignment = (opts) => {
+    const { data, computedFontConfig, alignLayout, treeLayout, treeIndex, alignIndex, computedState, dom, getState, config } = opts
+    const state = getState()
+    const { rowData } = data
+    const structure = data.structure || {}, structureState = state.structure, structureConfig = config.structure || {}
+    const { nameDivWidth, warn } = config
+    const { nodeHeight } = treeLayout
+    const { nameFont, nameFontSize, nameFontColor, charFont, charFontName, genericRowHeight } = computedFontConfig
     const { alignDiv, structuresDiv } = dom
     
     if (!dom.namesDiv) {   // first build?
@@ -351,52 +362,43 @@ const { render } = (() => {
                                 { 'z-index': 1 })
 
       // attach event handlers
-      attachDragHandlers ({ dom, state })
+      attachDragHandlers ({ dom, getState })
       attachAlignHandlers ({ dom, config })
 
       // add the alignment names
       let nameDivList = [], nameSpanList = []
-      dom.alignHandler.structure = makeStructureHandler ({ structureState, alignSummary, rowData, dom })
+      dom.alignHandler.structure = makeStructureHandler ({ structureState, alignIndex, rowData, dom })
       
-      // this promise chain gives the DOM time to display after each node, which is semi-useful as a progress indicator, but possibly redundant now given that the build is quite fast
-      // (it's more a relic from when I was adding spans for every character in the alignment, which created a DOM with thousands of elements and took forever)
-      await treeSummary.nodes.reduce
-      ((promise, node, row) =>
-       promise.then (() => {
+      treeIndex.nodes.forEach ((node, row) => {
+        log (warn, "Building row #" + (row+1) + "/" + treeIndex.nodes.length + ": " + node)
+        
+        const initClass = computedState.nodeVisible[node] ? 'tav-show' : 'tav-hide'
          
-         log (warn, "Building row #" + (row+1) + "/" + treeSummary.nodes.length + ": " + node)
-
-         const initClass = treeAlignState.nodeVisible[node] ? 'tav-show' : 'tav-hide'
-         
-         let nameDiv = create ('div', dom.namesDiv,
-                               { height: nodeHeight[node] + 'px',
-                                 'flex-direction': 'column',
-                                 'justify-content': 'center' },
-                               { class: initClass })
-
-         nameDivList.push (nameDiv)
-         nameSpanList.push (buildNameSpan ({ name: node, structure: structure[node], structureConfig, structureState, structuresDiv, nameFont, nameFontColor, nameDiv }))
-
-         return delayPromise (0)
-       }),
-       new Promise ((resolve) => resolve()))
+        let nameDiv = create ('div', dom.namesDiv,
+                              { height: nodeHeight[node] + 'px',
+                                'flex-direction': 'column',
+                                'justify-content': 'center' },
+                              { class: initClass })
+        
+        nameDivList.push (nameDiv)
+        nameSpanList.push (buildNameSpan ({ name: node, structure: structure[node], structureConfig, structureState, structuresDiv, nameFont, nameFontColor, nameDiv }))
+      })
 
       extend (dom, { nameDivList, nameSpanList })
     }
-    return dom
   }
 
   // style alignment
   const styleAlignment = (opts) => {
-    const { dom, treeSummary, treeLayout, treeAlignState, alignLayout } = opts
-    const { nodeVisible, columnVisible, nodeScale, columnScale, prevState } = treeAlignState
+    const { dom, treeIndex, treeLayout, computedState, alignLayout } = opts
+    const { nodeVisible, columnVisible, nodeScale, columnScale, prevState } = computedState
     const { nodeHeight, treeHeight } = treeLayout
     const { alignWidth } = alignLayout
 
     updateStyle (dom.rowsBackDiv, { width: alignWidth,
                                     height: treeHeight })
 
-    treeSummary.nodes.forEach ((node, row) => {
+    treeIndex.nodes.forEach ((node, row) => {
       const scale = nodeScale[node], prevScale = prevState.nodeScale[node]
       const newClass = getRowClass (nodeVisible[node], scale)
       const oldClass = getRowClass (prevState.nodeVisible[node], prevScale)
@@ -433,12 +435,12 @@ const { render } = (() => {
   const defaultPdbChain = 'A'
   const mouseoverLabelDelay = 100
   const makeStructureHandler = (opts) => {
-    const { structureState, alignSummary, rowData, dom } = opts
+    const { structureState, alignIndex, rowData, dom } = opts
     const mouseover = (coords) => {
       setTimer (structureState, 'mouseover', mouseoverLabelDelay, () => {
         structureState.openStructures.forEach ((s) => {
           if (rowData[s.node] && !isGapChar(rowData[s.node][coords.column]) && s.viewer) {
-            const colToSeqPos = alignSummary.alignColToSeqPos[s.node]
+            const colToSeqPos = alignIndex.alignColToSeqPos[s.node]
             if (colToSeqPos) {
               const seqPos = colToSeqPos[coords.column]
               const pdbSeqPos = seqPos + (typeof(s.structure.startPos) === 'undefined' ? 1 : s.structure.startPos)
@@ -502,8 +504,10 @@ const { render } = (() => {
   
   // create node-toggle handler
   const makeNodeClickHandler = (opts) => {
-    const { treeSummary, alignSummary, rowData, handler, treeAlignState, renderOpts } = opts
-    const { collapsed, nodeScale, columnScale, forceDisplayNode, nodeVisible, columnVisible } = treeAlignState
+    const { treeIndex, alignIndex, computedState, renderOpts } = opts
+    const { rowData } = renderOpts.data
+    const { handler } = renderOpts.config
+    const { collapsed, nodeScale, columnScale, forceDisplayNode, nodeVisible, columnVisible } = computedState
     const collapseAnimationFrames = 10
     const collapseAnimationDuration = 200
     const collapseAnimationMaxFrameSkip = 8
@@ -516,9 +520,9 @@ const { render } = (() => {
           delete newCollapsed[node]
         } else
           newCollapsed[node] = true
-        const newViz = getNodeVisibility ({ treeSummary, alignSummary, collapsed: newCollapsed, forceDisplayNode, rowData })
+        const newViz = getNodeVisibility ({ treeIndex, alignIndex, state: { collapsed: newCollapsed, forceDisplayNode }, data: { rowData } })
         let newlyVisibleColumns = [], newlyHiddenColumns = []
-        for (let col = 0; col < alignSummary.columns; ++col)
+        for (let col = 0; col < alignIndex.columns; ++col)
           if (newViz.columnVisible[col] !== columnVisible[col])
             (newViz.columnVisible[node] ? newlyVisibleColumns : newlyHiddenColumns).push (col)
 
@@ -527,7 +531,7 @@ const { render } = (() => {
         const drawAnimationFrame = () => {
           if (framesLeft) {
             const scale = (wasCollapsed ? (collapseAnimationFrames + 1 - framesLeft) : framesLeft) / (collapseAnimationFrames + 1)
-            treeSummary.descendants[node].forEach ((desc) => { nodeScale[desc] = scale })
+            treeIndex.descendants[node].forEach ((desc) => { nodeScale[desc] = scale })
             nodeScale[node] = 1 - scale
             newlyHiddenColumns.forEach ((col) => columnScale[col] = scale)
             newlyVisibleColumns.forEach ((col) => columnScale[col] = 1 - scale)
@@ -535,7 +539,7 @@ const { render } = (() => {
             renderOpts.state.disableTreeEvents = true
             renderOpts.state.animating = true
           } else {
-            treeSummary.descendants[node].forEach ((desc) => { delete nodeScale[desc] })
+            treeIndex.descendants[node].forEach ((desc) => { delete nodeScale[desc] })
             delete nodeScale[node]
             newlyHiddenColumns.forEach ((col) => delete columnScale[col])
             newlyVisibleColumns.forEach ((col) => delete columnScale[col])
@@ -564,8 +568,10 @@ const { render } = (() => {
   
   // attach node-toggle handler
   const attachTreeHandlers = (opts) => {
-    const { dom, nodeClicked, treeCanvas, treeLayout, nodesWithHandles, nodeHandleClickRadius, collapsed } = opts
-    const { treeAlignDiv } = dom
+    const { dom, treeLayout, computedTreeConfig, state, nodeClicked } = opts
+    const { treeAlignDiv, treeCanvas, nodesWithHandles } = dom
+    const { nodeHandleClickRadius } = computedTreeConfig
+    const { collapsed } = state
     treeCanvas.addEventListener ('click', (evt) => {
       evt.preventDefault()
       const mouseX = parseInt (evt.offsetX)
@@ -597,70 +603,65 @@ const { render } = (() => {
   
   // attach drag handlers
   const attachDragHandlers = (opts) => {
-    const { dom, state } = opts
-    const { treeAlignDiv, rowsDiv } = dom
+    const { dom, getState } = opts
+    const { container, treeAlignDiv, rowsDiv } = dom
+    const state = getState()
     let { scrollLeft, scrollTop } = state
 
     let startX, rowsDivMouseDown;
     rowsDiv.addEventListener("mousedown", e => {
       rowsDivMouseDown = true;
-      rowsDiv.classList.add("active");
       startX = e.pageX - rowsDiv.offsetLeft;
       scrollLeft = rowsDiv.scrollLeft;
     });
-    rowsDiv.addEventListener("mouseleave", () => {
+    window.addEventListener("mouseleave", () => {
       rowsDivMouseDown = false;
-      rowsDiv.classList.remove("active");
       dom.panning = false
     });
-    rowsDiv.addEventListener("mouseup", () => {
+    window.addEventListener("mouseup", () => {
       rowsDivMouseDown = false;
-      rowsDiv.classList.remove("active");
     });
-    rowsDiv.addEventListener("mousemove", e => {
+    window.addEventListener("mousemove", e => {
       if (!rowsDivMouseDown) return;
       e.preventDefault();
       const x = e.pageX - rowsDiv.offsetLeft;
       const walk = x - startX;
       rowsDiv.scrollLeft = scrollLeft - walk;
       dom.panning = true  // will be cleared by mouseleave or click
-      delayedCanvasRedraw (dom, state)
+      delayedCanvasRedraw (dom, getState())
     });
     rowsDiv.addEventListener("scroll", () => {
-      delayedCanvasRedraw (dom, state)
+      delayedCanvasRedraw (dom, getState())
     })
 
-    let startY, containerMouseDown;
+    let startY, treeAlignMouseDown;
     treeAlignDiv.addEventListener("mousedown", e => {
-      containerMouseDown = true;
-      treeAlignDiv.classList.add("active");
+      treeAlignMouseDown = true;
       startY = e.pageY - treeAlignDiv.offsetTop;
       scrollTop = treeAlignDiv.scrollTop;
     });
-    treeAlignDiv.addEventListener("mouseleave", () => {
-      containerMouseDown = false;
-      treeAlignDiv.classList.remove("active");
+    window.addEventListener("mouseleave", () => {
+      treeAlignMouseDown = false;
       dom.scrolling = false
     });
-    treeAlignDiv.addEventListener("mouseup", () => {
-      containerMouseDown = false;
-      treeAlignDiv.classList.remove("active");
+    window.addEventListener("mouseup", () => {
+      treeAlignMouseDown = false;
     });
-    treeAlignDiv.addEventListener("mousemove", e => {
-      if (!containerMouseDown) return;
+    window.addEventListener("mousemove", e => {
+      if (!treeAlignMouseDown) return;
       e.preventDefault();
       const y = e.pageY - treeAlignDiv.offsetTop;
       const walk = y - startY;
       treeAlignDiv.scrollTop = scrollTop - walk;
       dom.scrolling = true  // will be cleared by mouseleave or click
-      delayedCanvasRedraw (dom, state)
+      delayedCanvasRedraw (dom, getState())
     });
     treeAlignDiv.addEventListener("scroll", e => {
-      delayedCanvasRedraw (dom, state)
+      delayedCanvasRedraw (dom, getState())
     })
 
     window.addEventListener("resize", e => {
-      delayedCanvasRedraw (dom, state)
+      delayedCanvasRedraw (dom, getState())
     })
   }
 
@@ -700,26 +701,26 @@ const { render } = (() => {
   
   // update mouseover/click event handlers
   const updateAlignHandlers = (opts) => {
-    const { dom, treeSummary, alignSummary, rowData, alignLayout, treeLayout } = opts
+    const { dom, treeIndex, alignIndex, rowData, alignLayout, treeLayout } = opts
     const { rowsDiv, treeAlignDiv } = dom
-    dom.resolveAlignCoords = makeResolveAlignCoords ({ treeSummary, alignSummary, treeLayout, alignLayout, rowData })
+    dom.resolveAlignCoords = makeResolveAlignCoords ({ treeIndex, alignIndex, treeLayout, alignLayout, rowData })
   }
 
   // create function to resolve coords of alignment mouse event
   const makeResolveAlignCoords = (opts) => {
-    const { treeSummary, alignSummary, treeLayout, alignLayout, rowData } = opts
+    const { treeIndex, alignIndex, treeLayout, alignLayout, rowData } = opts
     return (evt) => {
       const x = parseInt (evt.offsetX),
             y = parseInt (evt.offsetY)
       let row, column
-      for (row = 0; row < treeSummary.nodes.length - 1; ++row)
+      for (row = 0; row < treeIndex.nodes.length - 1; ++row)
         if (treeLayout.rowY[row] <= y && treeLayout.rowY[row] + treeLayout.rowHeight[row] > y)
           break
-      for (column = 0; column < alignSummary.columns - 1; ++column)
+      for (column = 0; column < alignIndex.columns - 1; ++column)
         if (alignLayout.colX[column] <= x && alignLayout.colX[column] + alignLayout.colWidth[column] > x)
           break
-      const node = treeSummary.nodes[row],
-            colToSeqPos = alignSummary.alignColToSeqPos[node],
+      const node = treeIndex.nodes[row],
+            colToSeqPos = alignIndex.alignColToSeqPos[node],
             seqPos = colToSeqPos && colToSeqPos[column],
             seq = rowData[node],
             c = seq && seq[column],
@@ -730,10 +731,10 @@ const { render } = (() => {
 
   // render to canvas
   const drawVisibleAlignmentRegionToCanvas = (opts) => {
-    const { canvas, top, left, treeSummary, treeLayout, alignSummary, rowData, fontConfig, alignLayout } = opts
+    const { canvas, top, left, treeIndex, treeLayout, alignIndex, rowData, computedFontConfig, alignLayout } = opts
     const bottom = top + canvas.height, right = left + canvas.width
     const ctx = canvas.getContext('2d')
-    ctx.font = fontConfig.charFont
+    ctx.font = computedFontConfig.charFont
     let firstRow, lastRow  // firstRow is first (partially) visible row, lastRow is last (partially) visible row
     for (let row = firstRow = 0; row < treeLayout.rowHeight.length && treeLayout.rowY[row] < bottom; ++row) {
       if (treeLayout.rowY[row] < top)
@@ -741,7 +742,7 @@ const { render } = (() => {
       lastRow = row
     }
     let colX = 0
-    for (let col = 0; col < alignSummary.columns && colX < right; ++col) {
+    for (let col = 0; col < alignIndex.columns && colX < right; ++col) {
       const xScale = alignLayout.computedColScale[col],
             colX = alignLayout.colX[col],
             width = alignLayout.colWidth[col]
@@ -750,11 +751,11 @@ const { render } = (() => {
           const yScale = treeLayout.computedRowScale[row],
                 rowY = treeLayout.rowY[row],
                 height = treeLayout.rowHeight[row],
-                seq = rowData[treeSummary.nodes[row]]
+                seq = rowData[treeIndex.nodes[row]]
           if (height && seq) {
             ctx.setTransform (xScale, 0, 0, yScale, colX - left, rowY + height - top)
             const c = seq[col]
-            ctx.fillStyle = getColor (c, fontConfig.color)
+            ctx.fillStyle = getColor (c, computedFontConfig.color)
             ctx.globalAlpha = Math.min (xScale, yScale)
             ctx.fillText (c, 0, 0)
           }
@@ -765,7 +766,8 @@ const { render } = (() => {
   // create the canvas and attach to the alignment
   const offscreenRatio = 1  // the proportion of the rendered view that is invisible, on each side. Total rendered area = visible area * (1 + 2 * offscreenRatio)^2
   const attachAlignCanvas = (opts) => {
-    const { dom, treeSummary, treeLayout, alignSummary, rowData, fontConfig, alignLayout, state } = opts
+    const { dom, treeIndex, treeLayout, alignIndex, data, computedFontConfig, alignLayout, getState } = opts
+    const { rowData } = data
     const { rowsDiv } = dom
     // create a "redrawCanvas" method for scrolling. This is a little hacky/nonideal: every other redraw goes through the main render() method.
     // There's no real reason why this redraw shouldn't also go through render(), except then we'd need to check whether the tree or alignment had changed, and only redraw the part that had.
@@ -773,6 +775,7 @@ const { render } = (() => {
     dom.redrawCanvas = () => {
       const visibleWidth = rowsDiv.offsetWidth, visibleHeight = rowsDiv.offsetHeight
       const offscreenWidth = offscreenRatio * visibleWidth, offscreenHeight = offscreenRatio * visibleHeight
+      const state = getState()
       const scrollTop = state.scrollTop || 0,
             scrollLeft = state.scrollLeft || 0,
             top = Math.max (0, scrollTop - offscreenWidth),
@@ -791,10 +794,10 @@ const { render } = (() => {
                                left },
                              { width,
                                height })
-      drawVisibleAlignmentRegionToCanvas ({ canvas, top, left, width, height, treeSummary, treeLayout, alignSummary, rowData, fontConfig, alignLayout })
+      drawVisibleAlignmentRegionToCanvas ({ canvas, top, left, width, height, treeIndex, treeLayout, alignIndex, rowData, computedFontConfig, alignLayout })
       dom.alignCanvas = canvas
 
-      updateAlignHandlers ({ dom, treeSummary, alignSummary, rowData, alignLayout, treeLayout })
+      updateAlignHandlers ({ dom, treeIndex, alignIndex, rowData, alignLayout, treeLayout })
     }
     dom.redrawCanvas()
   }
@@ -915,8 +918,9 @@ const { render } = (() => {
   }
 
   // our friend, extend (limited version...)
-  const extend = (a, b) => {
-    Object.keys(b).forEach ((k) => a[k] = b[k])
+  const extend = function() {
+    let a = arguments[0]
+    Array.from(arguments).slice(1).forEach ((b) => Object.keys(b).forEach ((k) => a[k] = b[k]))
     return a
   }
 
@@ -1001,110 +1005,119 @@ const { render } = (() => {
     (warn || console.warn) (message)
   }
 
-  // Promise delay
-  const delayPromise = (delay) => {
-    return new Promise ((resolve) => setTimeout (resolve, delay))
+  // default configuration
+  // it's a bit arbitrary which things are configurable, and which are hardwired
+  const defaultConfig = {
+    treeAlignHeight: 400,
+    genericRowHeight: 24,
+    nameFontSize: 12,
+    containerHeight: '100%',
+    containerWidth: '100%',
+    treeWidth: 200,
+    nameDivWidth: 200,
+    branchStrokeStyle: 'black',
+    nodeHandleRadius: 4,
+    nodeHandleClickRadius: 40,
+    nodeHandleFillStyle: 'white',
+    collapsedNodeHandleFillStyle: 'black',
+    rowConnectorDash: [2,2],
+    structureConfig: { width: 300, height: 300 },
+    handler: {},
+    colorScheme: defaultColorScheme
   }
   
   // main entry point
   const render = async (opts) => {
-    // branches is a list of [parent,child,length]
-    // rowData is a map of seqname->row
-    // All nodes MUST be uniquely named!
     const { data } = opts
-    const summary = opts.summary = opts.summary || {}
-    const config = opts.config = opts.config || {}
-    const state = opts.state = opts.state || {}
+    const indices = opts.indices = opts.indices || {}
     const dom = opts.dom = opts.dom || {}
 
-    const { root, branches, rowData } = getData (data, config)
+    // state
+    const state = opts.state = extend ({ collapsed: {},
+                                         forceDisplayNode: {},
+                                         nodeScale: {},
+                                         columnScale: {},
+                                         scrollTop: 0,
+                                         scrollLeft: 0,
+                                         disableTreeEvents: false,
+                                         prevState: { nodeVisible: {},
+                                                      columnVisible: [],
+                                                      nodeScale: {},
+                                                      columnScale: {} },
+                                         structure: { openStructures: [] } },
+                                       opts.state || {})
+    
+    const { collapsed, forceDisplayNode, nodeScale, columnScale, disableTreeEvents, prevState, structureState } = state
+
+    // Create a function to get state from the opts object, rather than passing in the state object directly.
+    // The need for this is a consequence of two things:
+    //  (1) a dirty hack (the redrawCanvas method), used when scrolling, that bypasses the "proper" flow of calling render() to redraw things;
+    //  (2) the fact that we change opts.state at the top of this method.
+    // The first of these things means that we need to create a closure (redrawCanvas) that can change the state;
+    // the second thing means that we can't rely on a reference to state being persistent/stable, so instead we pass in a method that gets it.
+    // This is all a bit convoluted and it would almost certainly be better to take a purer React-style approach to redrawing the canvas after a scroll.
+    const getState = () => opts.state
+    
+    // config
+    const config = extend ({}, defaultConfig, opts.config || {})
+    const { parent, warn, treeAlignHeight, genericRowHeight, nameFontSize, containerHeight, containerWidth, treeWidth, nameDivWidth, branchStrokeStyle, nodeHandleRadius, nodeHandleClickRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, structureConfig, handler } = config
+
+    // data
+    const { root, branches, rowData } = getData (data, opts.config)
     const structure = data.structure || {}
 
-    const collapsed = state.collapsed = state.collapsed || {}
-    const forceDisplayNode = state.forceDisplayNode = state.forceDisplayNode || {}
-    const nodeScale = state.nodeScale = state.nodeScale || {}
-    const columnScale = state.columnScale = state.columnScale || {}
-    const disableTreeEvents = state.disableTreeEvents
-    const prevState = state.prevState = state.prevState || { nodeVisible: {}, columnVisible: [], nodeScale: {}, columnScale: {} }
-    const structureState = state.structure = state.structure || { openStructures: [] }
-
-    // TODO: refactor default config into a single extend(defaultConfig,config)
-    const parent = config.parent
-    const warn = config.warn
-    const treeAlignHeight = config.treeAlignHeight || 400
-    const genericRowHeight = config.genericRowHeight || 24
-    const nameFontSize = config.nameFontSize || 12
-    const containerHeight = config.height || '100%'
-    const containerWidth = config.width || '100%'
-    const treeWidth = config.treeWidth || 200
-    const nameDivWidth = config.nameDivWidth || 200
-    const branchStrokeStyle = config.branchStrokeStyle || 'black'
-    const nodeHandleStrokeStyle = branchStrokeStyle
-    const nodeHandleRadius = config.nodeHandleRadius || 4
-    const nodeHandleClickRadius = config.nodeHandleClickRadius || 4*nodeHandleRadius
-    const nodeHandleFillStyle = config.nodeHandleFillStyle || 'white'
-    const collapsedNodeHandleFillStyle = config.collapsedNodeHandleFillStyle || 'black'
-    const rowConnectorDash = config.rowConnectorDash || [2,2]
-    const structureConfig = config.structure || { width: 300, height: 300 }
-    
-    const handler = config.handler || {}
-    const color = config.color || colorScheme[config.colorScheme || defaultColorScheme]
-    
+    // tree configuration
     const treeStrokeWidth = 1
+    const nodeHandleStrokeStyle = branchStrokeStyle
     const availableTreeWidth = treeWidth - nodeHandleRadius - 2*treeStrokeWidth
+    const scrollbarHeight = 20  // hack, could be platform-dependent, a bit fragile...
+    const computedTreeConfig = { treeWidth, availableTreeWidth, genericRowHeight, branchStrokeStyle, nodeHandleStrokeStyle, nodeHandleRadius, nodeHandleClickRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, treeStrokeWidth, scrollbarHeight }
 
+    // font configuration
     const charFontName = 'Menlo,monospace'
     const nameFontName = 'serif'
     const nameFontColor = 'black'
-    const scrollbarHeight = 20  // hack, could be platform-dependent, a bit fragile...
-    
     const charFont = genericRowHeight + 'px ' + charFontName
     const nameFont = nameFontSize + 'px ' + nameFontName
-    
-    const treeConfig = { treeWidth, availableTreeWidth, genericRowHeight, branchStrokeStyle, nodeHandleStrokeStyle, nodeHandleRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, treeStrokeWidth, scrollbarHeight }
-    const fontConfig = { charFont, charFontName, color, nameFont, nameFontName, nameFontSize, nameFontColor }
+    const color = config.color || colorScheme[config.colorScheme]
+    const computedFontConfig = { charFont, charFontName, color, nameFont, nameFontName, nameFontSize, nameFontColor, genericRowHeight }
 
-    // analyze tree & alignment
-    const treeSummary = summary.treeSummary = summary.treeSummary || summarizeTree ({ root, branches, collapsed })
-    const alignSummary = summary.alignSummary = summary.alignSummary || summarizeAlignment ({ rowData })
+    // build indices of tree & alignment
+    const treeIndex = indices.treeIndex = indices.treeIndex || indexTree ({ root, branches, collapsed })
+    const alignIndex = indices.alignIndex = indices.alignIndex || indexAlignment ({ rowData })
 
-    // get tree layout
-    const { ancestorCollapsed, nodeVisible, columnVisible } = getNodeVisibility ({ treeSummary, alignSummary, collapsed, forceDisplayNode, rowData })
-    const treeAlignState = { collapsed, ancestorCollapsed, forceDisplayNode, nodeVisible, columnVisible, nodeScale, columnScale, prevState }
-    const treeLayout = layoutTree ({ treeAlignState, treeConfig, treeSummary, containerHeight })
-    const { nx, ny, nodeHeight, treeHeight } = treeLayout
-
-    // get alignment metrics
-    const alignLayout = layoutAlignment ({ treeSummary, alignSummary, treeAlignState, genericRowHeight, charFont, color, treeAlignState })
-    const { charWidth, charHeight } = alignLayout
+    // get tree & alignment layout
+    const computedState = extend (getNodeVisibility ({ data, state, treeIndex, alignIndex }),
+                                  state)
+    const treeLayout = layoutTree ({ computedState, computedTreeConfig, treeIndex, config })
+    const alignLayout = layoutAlignment ({ treeIndex, alignIndex, computedState, computedFontConfig })
     
     // create the tree & alignment container DIVs
-    let { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv } = createContainer ({ parent, dom, containerWidth, containerHeight, treeAlignHeight, treeWidth, treeHeight, structureConfig, alignSummary, alignLayout })
-    extend (dom, { container, treeAlignDiv, treeDiv, alignDiv, structuresDiv })
+    createContainer ({ dom, config, treeLayout, alignIndex, alignLayout })
 
     // render the tree
-    const { treeCanvas, makeNodeHandlePath, nodesWithHandles } = renderTree ({ treeWidth, treeSummary, treeLayout, treeAlignState, treeConfig, dom })
+    renderTree ({ treeIndex, treeLayout, computedState, computedTreeConfig, dom })
 
     // attach tree event handlers
     if (!disableTreeEvents) {
-      const nodeClicked = makeNodeClickHandler ({ treeSummary, alignSummary, rowData, handler, treeAlignState, renderOpts: opts })
-      attachTreeHandlers ({ dom, nodeClicked, treeCanvas, nodesWithHandles, treeLayout, nodeHandleClickRadius, collapsed })
+      const nodeClicked = makeNodeClickHandler ({ treeIndex, alignIndex, computedState, renderOpts: opts })
+      attachTreeHandlers ({ dom, nodeClicked, treeLayout, computedTreeConfig, state })
     }
 
     // build the alignment
-    let { namesDiv, rowsDiv, rebuilt } = await buildAlignment ({ rowData, dom, config, structure, warn, structureConfig, structureState, handler, fontConfig, genericRowHeight, nameDivWidth, nodeHeight, alignLayout, treeLayout, treeSummary, alignSummary, treeAlignState, state })
-    extend (dom, { namesDiv, rowsDiv })
+    buildAlignment ({ dom, config, data, computedFontConfig, alignLayout, treeLayout, treeIndex, alignIndex, computedState, getState })
 
     // style the alignment
-    styleAlignment ({ dom, treeSummary, treeLayout, treeAlignState, alignLayout })
+    styleAlignment ({ dom, treeIndex, treeLayout, computedState, alignLayout })
 
     // attach the canvas
-    attachAlignCanvas ({ dom, treeSummary, treeLayout, alignSummary, rowData, fontConfig, alignLayout, state, config })
+    attachAlignCanvas ({ dom, treeIndex, treeLayout, alignIndex, data, computedFontConfig, alignLayout, config, getState })
 
     // set scroll state
     setScrollState ({ dom, state })
-    
-    return { element: container }
+
+    // and return
+    return { element: dom.container }
   }
 
   return { render }
