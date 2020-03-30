@@ -104,13 +104,13 @@ const { render } = (() => {
       children[parent].push (child)
       branchLength[child] = len
     })
-    let nodes = [], nodeRank = {}, descendants = {}, distFromRoot = {}, maxDistFromRoot = 0
+    let nodes = [], seenNode = {}, descendants = {}, distFromRoot = {}, maxDistFromRoot = 0
     const addNode = (node) => {
       if (!node)
         throw new Error ("All nodes must be named")
-      if (nodeRank[node])
+      if (seenNode[node])
         throw new Error ("All node names must be unique (duplicate '" + node + "')")
-      nodeRank[node] = nodes.length
+      seenNode[node] = true
       nodes.push (node)
     }
     const addSubtree = (node, parent) => {
@@ -130,7 +130,7 @@ const { render } = (() => {
       return [node].concat (clade)
     }
     addSubtree (root)
-    return { root, branches, children, descendants, branchLength, nodes, nodeRank, distFromRoot, maxDistFromRoot }
+    return { root, branches, children, descendants, branchLength, nodes, distFromRoot, maxDistFromRoot }
   }
 
   // get tree collapsed/open state
