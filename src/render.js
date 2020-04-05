@@ -780,11 +780,12 @@ const { render } = (() => {
               ctx.fillText (c, 0, 0)
             } else {
               let psum = 0
-              Object.keys(c).sort ((a,b) => c[a] - c[b]).forEach ((ci) => {
-                const p = c[ci]
-                ctx.setTransform (xScale, 0, 0, yScale * p, colX - left, rowY + height*(1-psum-p) - top)
+              c.forEach ((cp) => {
+                const ci = cp[0], p = cp[1]
+                ctx.setTransform (xScale, 0, 0, yScale * p, colX - left, rowY + height*(1-psum) - top)
                 ctx.fillStyle = getColor (ci, computedFontConfig.color)
                 ctx.fillText (ci, 0, 0)
+                psum += p
               })
             }
           }
@@ -1014,8 +1015,24 @@ const { render } = (() => {
         data.root = getName (tree)
       }
     }
-    // TODO: debug this
-//    extend (data.rowData, PhylogeneticLikelihood.getNodePostProfiles ({ branchList: data.branches, nodeSeq: data.rowData }).nodeProfile)
+    // check if any nodes are missing; if so, do ancestral sequence reconstruction
+    const missingAncestors = data.branches.filter ((b) => typeof(data.rowData[b[0]]) === 'undefined').length
+    if (missingAncestors) {
+      const alphSize = 20  // assume for ancestral reconstruction purposes these are protein sequences; if not we'll need to pass a different model into getNodePostProfiles
+      const maxEntropy = Math.log(alphSize) / Math.log(2)
+      const { nodeProfile } = PhylogeneticLikelihood.getNodePostProfiles ({ branchList: data.branches,
+                                                                            nodeSeq: data.rowData,
+                                                                            postProbThreshold: .01 })
+      Object.keys(nodeProfile).forEach ((node) => {
+        data.rowData[node] = nodeProfile[node].map ((charProb) => {
+          const chars = Object.keys(charProb).sort ((a, b) => charProb[a] - charProb[b])
+          const norm = chars.reduce ((psum, c) => psum + charProb[c], 0)
+          const probs = chars.map ((c) => charProb[c] / norm)
+          const entropy = probs.reduce ((s, p) => s - p * Math.log(p), 0) / Math.log(2)
+          return chars.map ((c, n) => [c, probs[n] * (maxEntropy - entropy) / maxEntropy])
+        })
+      })
+    }
   }
 
   // method to parse FASTA (simple enough to build in here)
