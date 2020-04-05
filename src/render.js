@@ -2,6 +2,7 @@ const Stockholm = require ('stockholm-js'),
       Newick = require ('newick-js'),
       JukesCantor = require ('jukes-cantor'),
       RapidNeighborJoining = require ('neighbor-joining'),
+      PhylogeneticLikelihood = require ('phylogenetic-likelihood'),
       pv = require('bio-pv')
 
 const { render } = (() => {
@@ -45,28 +46,31 @@ const { render } = (() => {
   const indexAlignment = (opts) => {
     const { data } = opts
     const { rowData } = data
-    let alignColToSeqPos = {}, seqPosToAlignCol = {}, isChar = {}, columns
+    let rowDataAsArray = {}, alignColToSeqPos = {}, seqPosToAlignCol = {}, isChar = {}, columns
     Object.keys(rowData).forEach ((node) => {
       const row = rowData[node]
       if (typeof(columns) !== 'undefined' && columns != row.length)
         console.error ("Inconsistent row lengths")
       columns = row.length
       let pos2col = [], pos = 0
-      alignColToSeqPos[node] = row.split('').map ((c, col) => {
-        isChar[c] = true
+      const rowAsArray = typeof(row) === 'string' ? row.split('') : row
+      alignColToSeqPos[node] = rowAsArray.map ((c, col) => {
+        if (typeof(c) === 'string')
+          isChar[c] = true
         const isGap = isGapChar(c)
         if (!isGap)
           pos2col.push (col)
         return isGap ? pos : pos++
       })
+      rowDataAsArray[node] = rowAsArray
       seqPosToAlignCol[node] = pos2col
     })
     const chars = Object.keys(isChar).sort()
-    return { alignColToSeqPos, columns, chars }
+    return { alignColToSeqPos, rowDataAsArray, columns, chars }
   }
 
-  // helper to recognize gap characters
-  const isGapChar = (c) => { return c == '-' || c == '.' }
+  // helpers to recognize gap characters
+  const isGapChar = (c) => { return typeof(c) === 'string' ? (c == '-' || c == '.') : (!c || Object.keys(c).length === 0) }
 
   // get the root node(s) of a list of [parent,child,length] branches
   const getRoots = (branches) => {
@@ -135,9 +139,9 @@ const { render } = (() => {
 
   // get tree collapsed/open state
   const getNodeVisibility = (opts) => {
-    const { treeIndex, alignIndex, state, data } = opts
+    const { treeIndex, alignIndex, state } = opts
     const { collapsed, forceDisplayNode } = state
-    const { rowData } = data
+    const { rowDataAsArray } = alignIndex
     let ancestorCollapsed = {}, nodeVisible = {}
     const setCollapsedState = (node, parent) => {
       ancestorCollapsed[node] = ancestorCollapsed[parent] || collapsed[parent]
@@ -151,8 +155,8 @@ const { render } = (() => {
                                                                   || forceDisplayNode[node])))
     let columnVisible = new Array(alignIndex.columns).fill(false)
     treeIndex.nodes.filter ((node) => nodeVisible[node]).forEach ((node) => {
-      if (rowData[node])
-        rowData[node].split('').forEach ((c, col) => { if (!isGapChar(c)) columnVisible[col] = true })
+      if (rowDataAsArray[node])
+        rowDataAsArray[node].forEach ((c, col) => { if (!isGapChar(c)) columnVisible[col] = true })
     })
     return { ancestorCollapsed, nodeVisible, columnVisible }
   }
@@ -535,7 +539,7 @@ const { render } = (() => {
           delete newCollapsed[node]
         } else
           newCollapsed[node] = true
-        const newViz = getNodeVisibility ({ treeIndex, alignIndex, state: { collapsed: newCollapsed, forceDisplayNode }, data: { rowData } })
+        const newViz = getNodeVisibility ({ treeIndex, alignIndex, state: { collapsed: newCollapsed, forceDisplayNode } })
         let newlyVisibleColumns = [], newlyHiddenColumns = []
         for (let col = 0; col < alignIndex.columns; ++col)
           if (newViz.columnVisible[col] !== columnVisible[col])
@@ -768,11 +772,21 @@ const { render } = (() => {
                 height = treeLayout.rowHeight[row],
                 seq = rowData[treeIndex.nodes[row]]
           if (height && seq) {
-            ctx.setTransform (xScale, 0, 0, yScale, colX - left, rowY + height - top)
-            const c = seq[col]
-            ctx.fillStyle = getColor (c, computedFontConfig.color)
             ctx.globalAlpha = Math.min (xScale, yScale)
-            ctx.fillText (c, 0, 0)
+            const c = seq[col]
+            if (typeof(c) === 'string') {
+              ctx.setTransform (xScale, 0, 0, yScale, colX - left, rowY + height - top)
+              ctx.fillStyle = getColor (c, computedFontConfig.color)
+              ctx.fillText (c, 0, 0)
+            } else {
+              let psum = 0
+              Object.keys(c).sort ((a,b) => c[a] - c[b]).forEach ((ci) => {
+                const p = c[ci]
+                ctx.setTransform (xScale, 0, 0, yScale * p, colX - left, rowY + height*(1-psum-p) - top)
+                ctx.fillStyle = getColor (ci, computedFontConfig.color)
+                ctx.fillText (ci, 0, 0)
+              })
+            }
           }
         }
     }
@@ -1000,6 +1014,8 @@ const { render } = (() => {
         data.root = getName (tree)
       }
     }
+    // TODO: debug this
+//    extend (data.rowData, PhylogeneticLikelihood.getNodePostProfiles ({ branchList: data.branches, nodeSeq: data.rowData }).nodeProfile)
   }
 
   // method to parse FASTA (simple enough to build in here)
@@ -1104,7 +1120,7 @@ const { render } = (() => {
     const alignIndex = indices.alignIndex = indices.alignIndex || indexAlignment ({ data })
 
     // get tree & alignment layout. This is recomputed with every call to render()
-    const computedState = extend (getNodeVisibility ({ data, state, treeIndex, alignIndex }),
+    const computedState = extend (getNodeVisibility ({ state, treeIndex, alignIndex }),
                                   state)
     const treeLayout = layoutTree ({ computedState, computedTreeConfig, treeIndex, config })
     const alignLayout = layoutAlignment ({ treeIndex, alignIndex, computedState, computedFontConfig })
