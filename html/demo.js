@@ -1,6 +1,6 @@
 window.onload = () => {
   let mainDiv = document.getElementById ('main')
-  let loadingDiv = document.getElementById('loading')
+  let loadingSpan = document.getElementById('loading')
   
   // Sequences from Pfam family PF09408 and https://www.nature.com/articles/s41591-020-0820-9
   // Alignment created using https://github.com/evoldoers/historian as follows:
@@ -126,10 +126,10 @@ window.onload = () => {
         */
       },
       parent: mainDiv,
-      warn: (message) => loadingDiv.innerText = message,
+      warn: (message) => loadingSpan.innerText = message,
     }
   }
 
   TreeAlignView.render (opts)
-    .then (() => loadingDiv.innerText = '')
+    .then (() => loadingSpan.innerText = '')
 }

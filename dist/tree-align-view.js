@@ -92513,25 +92513,27 @@ const getNewickJSBranchList = (newickJS) => {
 
 const indexNewickJS = (newickJS) => indexBranchList (getNewickJSBranchList (newickJS))
 
-const indexAlphabet = (alphabet) => {
+const indexAlphabet = (alphabet, defaultGapChar) => {
   const chars = alphabet.split('')
   const charToIndex = {}
   chars.forEach ((c, i) => charToIndex[c] = i)
-  const initMissing = new Float32Array (alphabet.length).fill(0)
-  const initForChar = chars.map ((c, i) => {
+  const initChar = chars.map ((c, i) => {
     const a = new Float32Array (alphabet.length).fill(-Infinity);
     a[i] = 0;
     return a;
   })
+  const initMissing = new Float32Array (alphabet.length).fill(0)
+  const initGap = (defaultGapChar && chars.indexOf(defaultGapChar) >= 0) ? initChar[chars.indexOf(defaultGapChar)] : initMissing
   return {
     alphSize: alphabet.length,
     chars,
     charToIndex,
     initMissing,
-    initForChar,
+    initGap,
+    initChar,
     init: (c) => {
       const i = charToIndex[c]
-      return typeof(i) === 'undefined' ? initMissing : initForChar[i]
+      return typeof(i) === 'undefined' ? initGap : initChar[i]
     }
   }
 }
@@ -92640,10 +92642,10 @@ const branchPostProb = (opts) => {
 
 const defaultModel = 'LeGascuel'
 const getNodePostProfiles = (opts) => {
-  const { branchList, newickJS, nodeSeq, isCaseSensitive } = opts
+  const { branchList, newickJS, nodeSeq, isCaseSensitive, defaultGapChar } = opts
   let { model, postProbThreshold } = opts
   model = model || models[defaultModel]
-  const alphabetIndex = indexAlphabet (model.alphabet)
+  const alphabetIndex = indexAlphabet (model.alphabet, defaultGapChar)
   const { alphSize, chars } = alphabetIndex
   if (typeof(postProbThreshold) === 'undefined')
     postProbThreshold = 1 / (2 * alphSize)
@@ -92682,7 +92684,7 @@ const getNodePostProfiles = (opts) => {
   }
   let nodeProfile = {}
   internalPreorderRank.forEach ((internal) => nodeProfile[preorder[internal]] = preorderNodeProfile[internal])
-  return { nodeProfile }
+  return { nodeProfile, treeIndex, columns }
 }
 
 module.exports = { models,
@@ -92700,6 +92702,7 @@ module.exports = { models,
 
 
 },{"./models":901,"mathjs":890}],901:[function(require,module,exports){
+// Le & Gascuel, 2008
 const LeGascuel = {
   alphabet: "ARNDCQEGHILKMFPSTWYV",
   rootprob: {
@@ -93148,7 +93151,32 @@ const LeGascuel = {
   }
 };
 
-module.exports = { LeGascuel };
+const makeGappedModel = (opts) => {
+  let { model, deletionRate, gapChar, gapFreq } = opts;
+  deletionRate = deletionRate || 0.05;  // Miklos, Lunter & Holmes, 2004
+  gapChar = gapChar || '-';
+  gapFreq = gapFreq || 0.5;
+  const insertionRate = deletionRate * gapFreq / (1 - gapFreq);
+  const alphabet = model.alphabet.split('');
+  const gappedModel = { alphabet: model.alphabet + gapChar,
+                        rootprob: {},
+                        subrate: {} };
+  gappedModel.rootprob[gapChar] = gapFreq;
+  gappedModel.subrate[gapChar] = {};
+  alphabet.forEach ((c) => {
+    gappedModel.rootprob[c] = (1 - gapFreq) * model.rootprob[c];
+    gappedModel.subrate[c] = {};
+    Object.keys(model.subrate[c]).forEach ((d) => {
+      gappedModel.subrate[c][d] = model.subrate[c][d];
+    });
+    gappedModel.subrate[gapChar][c] = model.rootprob[c] * insertionRate;
+    gappedModel.subrate[c][gapChar] = deletionRate;
+  })
+  return gappedModel;
+}
+
+module.exports = { LeGascuel,
+                   makeGappedModel };
 
 },{}],902:[function(require,module,exports){
 (function (global){
@@ -96058,7 +96086,7 @@ const { render } = (() => {
     nodesWithHandles.forEach ((node) => {
       setAlpha (node)
       makeNodeHandlePath (node)
-      // hack: collapsed[node]===false means that we are animating the open->collapsed transition
+      // hack: collapsed[node]===false (vs undefined) means that we are animating the open->collapsed transition
       // so the node's descendants are visible, but the node itself is rendered as collapsed
       if (collapsed[node] || (forceDisplayNode[node] && collapsed[node] !== false))
         ctx.fillStyle = collapsedNodeHandleFillStyle
@@ -96317,11 +96345,13 @@ const { render } = (() => {
         let framesLeft = collapseAnimationFrames
         const wasCollapsed = collapsed[node], newCollapsed = extend ({}, collapsed)
         if (wasCollapsed) {
-          collapsed[node] = false  // when collapsed[node]=false, it's rendered by renderTree() as a collapsed node, but its descendants are still visible. A bit of a hack...
+          collapsed[node] = false  // when collapsed[node]=false (vs undefined), it's rendered by renderTree() as a collapsed node, but its descendants are still visible. A bit of a hack...
           delete newCollapsed[node]
         } else
           newCollapsed[node] = true
-        const newViz = getNodeVisibility ({ treeIndex, alignIndex, state: { collapsed: newCollapsed, forceDisplayNode } })
+        const newForceDisplayNode = extend ({}, forceDisplayNode)
+        newForceDisplayNode[node] = !wasCollapsed
+        const newViz = getNodeVisibility ({ treeIndex, alignIndex, state: { collapsed: newCollapsed, forceDisplayNode: newForceDisplayNode } })
         let newlyVisibleColumns = [], newlyHiddenColumns = []
         for (let col = 0; col < alignIndex.columns; ++col)
           if (newViz.columnVisible[col] !== columnVisible[col])
@@ -96738,7 +96768,7 @@ const { render } = (() => {
 
   // method to get data & build tree if necessary
   const pdbRegex = /PDB; +(\S+) +(\S); ([0-9]+)/;   /* PFAM format for embedding PDB IDs in Stockholm files */
-  const getData = (data, config) => {
+  const getData = async (data, config) => {
     const structure = data.structure = data.structure || {}
     if (!(data.branches && data.rowData)) {
       let newickStr = data.newick  // was a Newick-format tree specified?
@@ -96798,16 +96828,28 @@ const { render } = (() => {
       }
     }
     // check if any nodes are missing; if so, do ancestral sequence reconstruction
-    const missingAncestors = data.branches.filter ((b) => typeof(data.rowData[b[0]]) === 'undefined').length
+    const rowData = data.rowData
+    const missingAncestors = data.branches.filter ((b) => typeof(rowData[b[0]]) === 'undefined').length
     if (missingAncestors) {
+      log (config.warn, 'Reconstructing ancestral sequences...')
+      await delayPromise(0)  // allow time to update view with log message
       const alphSize = 20  // assume for ancestral reconstruction purposes these are protein sequences; if not we'll need to pass a different model into getNodePostProfiles
       const maxEntropy = Math.log(alphSize) / Math.log(2)
-      const { nodeProfile } = PhylogeneticLikelihood.getNodePostProfiles ({ branchList: data.branches,
-                                                                            nodeSeq: data.rowData,
-                                                                            postProbThreshold: .01 })
+      const gapChar = '-', deletionRate = .001
+      const model = PhylogeneticLikelihood.models.makeGappedModel ({ model: PhylogeneticLikelihood.models[PhylogeneticLikelihood.defaultModel],
+                                                                     deletionRate,
+                                                                     gapChar })
+      const { nodeProfile, treeIndex, columns }
+            = PhylogeneticLikelihood.getNodePostProfiles ({ branchList: data.branches,
+                                                            nodeSeq: data.rowData,
+                                                            postProbThreshold: .01,
+                                                            model,
+                                                            defaultGapChar: gapChar })
       Object.keys(nodeProfile).forEach ((node) => {
-        data.rowData[node] = nodeProfile[node].map ((charProb) => {
-          const chars = Object.keys(charProb).sort ((a, b) => charProb[a] - charProb[b])
+        rowData[node] = nodeProfile[node].map ((charProb) => {
+          if (charProb[gapChar] >= .5)
+            return []
+          const chars = Object.keys(charProb).filter ((c) => c != gapChar).sort ((a, b) => charProb[a] - charProb[b])
           const norm = chars.reduce ((psum, c) => psum + charProb[c], 0)
           const probs = chars.map ((c) => charProb[c] / norm)
           const entropy = probs.reduce ((s, p) => s - p * Math.log(p), 0) / Math.log(2)
@@ -96830,6 +96872,13 @@ const { render } = (() => {
     return seq
   }
 
+  // Promise delay
+  const delayPromise = (delay) => {
+    return new Promise ((resolve, reject) => {
+      window.setTimeout (() => resolve(), delay)
+    })
+  }
+  
   // logging
   const log = (warn, message) => {
     (warn || console.warn) (message)
@@ -96896,7 +96945,7 @@ const { render } = (() => {
     const { parent, warn, treeAlignHeight, genericRowHeight, nameFontSize, containerHeight, containerWidth, treeWidth, nameDivWidth, branchStrokeStyle, nodeHandleRadius, nodeHandleClickRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, structureConfig, handler } = config
 
     // data (it's assumed that this does not change after the first call)
-    getData (data, config)
+    await getData (data, config)
 
     // tree configuration
     const treeStrokeWidth = 1

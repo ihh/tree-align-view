@@ -276,7 +276,7 @@ const { render } = (() => {
     nodesWithHandles.forEach ((node) => {
       setAlpha (node)
       makeNodeHandlePath (node)
-      // hack: collapsed[node]===false means that we are animating the open->collapsed transition
+      // hack: collapsed[node]===false (vs undefined) means that we are animating the open->collapsed transition
       // so the node's descendants are visible, but the node itself is rendered as collapsed
       if (collapsed[node] || (forceDisplayNode[node] && collapsed[node] !== false))
         ctx.fillStyle = collapsedNodeHandleFillStyle
@@ -535,11 +535,13 @@ const { render } = (() => {
         let framesLeft = collapseAnimationFrames
         const wasCollapsed = collapsed[node], newCollapsed = extend ({}, collapsed)
         if (wasCollapsed) {
-          collapsed[node] = false  // when collapsed[node]=false, it's rendered by renderTree() as a collapsed node, but its descendants are still visible. A bit of a hack...
+          collapsed[node] = false  // when collapsed[node]=false (vs undefined), it's rendered by renderTree() as a collapsed node, but its descendants are still visible. A bit of a hack...
           delete newCollapsed[node]
         } else
           newCollapsed[node] = true
-        const newViz = getNodeVisibility ({ treeIndex, alignIndex, state: { collapsed: newCollapsed, forceDisplayNode } })
+        const newForceDisplayNode = extend ({}, forceDisplayNode)
+        newForceDisplayNode[node] = !wasCollapsed
+        const newViz = getNodeVisibility ({ treeIndex, alignIndex, state: { collapsed: newCollapsed, forceDisplayNode: newForceDisplayNode } })
         let newlyVisibleColumns = [], newlyHiddenColumns = []
         for (let col = 0; col < alignIndex.columns; ++col)
           if (newViz.columnVisible[col] !== columnVisible[col])
@@ -956,7 +958,7 @@ const { render } = (() => {
 
   // method to get data & build tree if necessary
   const pdbRegex = /PDB; +(\S+) +(\S); ([0-9]+)/;   /* PFAM format for embedding PDB IDs in Stockholm files */
-  const getData = (data, config) => {
+  const getData = async (data, config) => {
     const structure = data.structure = data.structure || {}
     if (!(data.branches && data.rowData)) {
       let newickStr = data.newick  // was a Newick-format tree specified?
@@ -1016,16 +1018,28 @@ const { render } = (() => {
       }
     }
     // check if any nodes are missing; if so, do ancestral sequence reconstruction
-    const missingAncestors = data.branches.filter ((b) => typeof(data.rowData[b[0]]) === 'undefined').length
+    const rowData = data.rowData
+    const missingAncestors = data.branches.filter ((b) => typeof(rowData[b[0]]) === 'undefined').length
     if (missingAncestors) {
+      log (config.warn, 'Reconstructing ancestral sequences...')
+      await delayPromise(0)  // allow time to update view with log message
       const alphSize = 20  // assume for ancestral reconstruction purposes these are protein sequences; if not we'll need to pass a different model into getNodePostProfiles
       const maxEntropy = Math.log(alphSize) / Math.log(2)
-      const { nodeProfile } = PhylogeneticLikelihood.getNodePostProfiles ({ branchList: data.branches,
-                                                                            nodeSeq: data.rowData,
-                                                                            postProbThreshold: .01 })
+      const gapChar = '-', deletionRate = .001
+      const model = PhylogeneticLikelihood.models.makeGappedModel ({ model: PhylogeneticLikelihood.models[PhylogeneticLikelihood.defaultModel],
+                                                                     deletionRate,
+                                                                     gapChar })
+      const { nodeProfile, treeIndex, columns }
+            = PhylogeneticLikelihood.getNodePostProfiles ({ branchList: data.branches,
+                                                            nodeSeq: data.rowData,
+                                                            postProbThreshold: .01,
+                                                            model,
+                                                            defaultGapChar: gapChar })
       Object.keys(nodeProfile).forEach ((node) => {
-        data.rowData[node] = nodeProfile[node].map ((charProb) => {
-          const chars = Object.keys(charProb).sort ((a, b) => charProb[a] - charProb[b])
+        rowData[node] = nodeProfile[node].map ((charProb) => {
+          if (charProb[gapChar] >= .5)
+            return []
+          const chars = Object.keys(charProb).filter ((c) => c != gapChar).sort ((a, b) => charProb[a] - charProb[b])
           const norm = chars.reduce ((psum, c) => psum + charProb[c], 0)
           const probs = chars.map ((c) => charProb[c] / norm)
           const entropy = probs.reduce ((s, p) => s - p * Math.log(p), 0) / Math.log(2)
@@ -1048,6 +1062,13 @@ const { render } = (() => {
     return seq
   }
 
+  // Promise delay
+  const delayPromise = (delay) => {
+    return new Promise ((resolve, reject) => {
+      window.setTimeout (() => resolve(), delay)
+    })
+  }
+  
   // logging
   const log = (warn, message) => {
     (warn || console.warn) (message)
@@ -1114,7 +1135,7 @@ const { render } = (() => {
     const { parent, warn, treeAlignHeight, genericRowHeight, nameFontSize, containerHeight, containerWidth, treeWidth, nameDivWidth, branchStrokeStyle, nodeHandleRadius, nodeHandleClickRadius, nodeHandleFillStyle, collapsedNodeHandleFillStyle, rowConnectorDash, structureConfig, handler } = config
 
     // data (it's assumed that this does not change after the first call)
-    getData (data, config)
+    await getData (data, config)
 
     // tree configuration
     const treeStrokeWidth = 1
