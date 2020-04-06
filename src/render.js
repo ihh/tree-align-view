@@ -1038,7 +1038,7 @@ const { render } = (() => {
       Object.keys(nodeProfile).forEach ((node) => {
         rowData[node] = nodeProfile[node].map ((charProb) => {
           if (charProb[gapChar] >= .5)
-            return []
+            return gapChar
           const chars = Object.keys(charProb).filter ((c) => c != gapChar).sort ((a, b) => charProb[a] - charProb[b])
           const norm = chars.reduce ((psum, c) => psum + charProb[c], 0)
           const probs = chars.map ((c) => charProb[c] / norm)
