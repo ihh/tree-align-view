@@ -96615,6 +96615,7 @@ const { render } = (() => {
     // There's no real reason why this redraw shouldn't also go through render(), except then we'd need to check whether the tree or alignment had changed, and only redraw the part that had.
     // Yes, I am aware this is EXACTLY what React does...
     dom.redrawCanvas = () => {
+      console.warn('redraw')
       const visibleWidth = rowsDiv.offsetWidth, visibleHeight = rowsDiv.offsetHeight
       const offscreenWidth = offscreenRatio * visibleWidth, offscreenHeight = offscreenRatio * visibleHeight
       const state = getState()

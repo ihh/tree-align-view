@@ -4,6 +4,8 @@ A multiple alignment viewer with integrated phylogeny and structure browsing.
 
 For usage see the [demo](https://ihh.github.io/tree-align-view/html/demo.html) ([source](html/demo.html)).
 
+**Please note: this code is no longer maintained. It has been replaced by the ABrowse React component ([Github](https://github.com/ihh/abrowse); [demo](https://ihh.github.io/abrowse/)).**
+
 Basically something like this:
 
 ~~~~
